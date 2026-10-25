@@ -58,6 +58,7 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
+@onready var coord_label: RichTextLabel = $UILayer/CoordLabel
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
@@ -297,6 +298,8 @@ func _push_uniforms() -> void:
 
 
 func _update_hud(delta: float) -> void:
+	coord_label.text = "[color=#ff8a80]X[/color] %+.1f    [color=#7ee787]Y[/color] %+.1f    [color=#79c0ff]Z[/color] %+.1f    [color=#d2a8ff]W[/color] %+.1f" % [
+		pos.x, pos.y, pos.z, pos.w]
 	var u := pos.w / THROAT_R
 	var uni := "宇宙B (暖)" if pos.w > 0.0 else "宇宙A (冷)"
 	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f   %s   速度 %.1f   SS %.1fx" % [
