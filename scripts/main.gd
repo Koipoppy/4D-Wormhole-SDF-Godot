@@ -25,6 +25,8 @@ const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型
 鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
 你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
 · 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是另一个宇宙 (星空色温不同, 回头可返回)
+· l = 到喉口的有符号固有距离: l 过零的那一步就是穿越; W 是 4D 嵌入高度,
+  在弯曲空间里移动时它自然跟着变 (就像球面上走路经纬度会变) —— 不代表穿越
 · 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
 · 嵌入图 (V) 显示这条弯曲空间在 4D 欧氏空间中的等距嵌入 ρ = b₀·cosh(w/b₀)"""
 
@@ -300,10 +302,10 @@ func _push_uniforms() -> void:
 func _update_hud(delta: float) -> void:
 	coord_label.text = "[color=#ff8a80]X[/color] %+.1f    [color=#7ee787]Y[/color] %+.1f    [color=#79c0ff]Z[/color] %+.1f    [color=#d2a8ff]W[/color] %+.1f" % [
 		pos.x, pos.y, pos.z, pos.w]
-	var u := pos.w / THROAT_R
+	var l := THROAT_R * sinh(pos.w / THROAT_R)   # 有符号固有距离: 过零 = 穿越喉口
 	var uni := "宇宙B (暖)" if pos.w > 0.0 else "宇宙A (冷)"
-	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f   %s   速度 %.1f   SS %.1fx" % [
-		MODE_NAMES[view_mode], u, pos.w, Vector3(pos.x, pos.y, pos.z).length(), uni, speed, ss]
+	pos_label.text = "[%s]  l(到喉口) %+.1f m   宇宙 %s   速度 %.1f   SS %.1fx" % [
+		MODE_NAMES[view_mode], l, uni, speed, ss]
 	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
 
 
