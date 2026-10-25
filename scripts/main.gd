@@ -1,50 +1,63 @@
 extends Node
-## 四维空间 SDF 引擎 + 虫洞 —— 度规实现 (v19)
+## 四维空间 SDF 引擎 + 虫洞 —— 分层宇宙 + 井道 (v20)
 ##
-## 数学模型 (来自三个参考链接):
-##   · 虫洞空间 = Morris–Thorne 零潮汐力度规 ds² = dl² + (l²+b₀²)dΩ²,
-##     它在 4D 欧氏空间中有精确等距嵌入 (超悬链面):
-##         P(u,θ,φ) = (b₀·u, b₀·cosh(u)·n̂(θ,φ))  ⇔  ρ = b₀·cosh(w/b₀)
-##     喉口 = w=0 处半径 b₀ 的球; u>0 / u<0 = 两个宇宙。
-##   · 观察者生活在这个弯曲的三维空间 (超曲面) 上: 位置每帧投影回曲面,
-##     移动/视线都在切向 3-空间内。
-##   · 光线 = 超曲面上的测地线 (约束积分器: 直线步进 → 投影回曲面 →
-##     速度重新切向化)。弯曲来自度规 —— 喉口附近的星光多重像与
-##     爱因斯坦环是真实结果, 没有任何特效。
-##   · 穿越 = 飞过喉口 (纯飞行, 连续, 无传送)。
+## 世界模型:
+##   · 三个宇宙 = w 轴上的三张平行层: A (w=-24, 冷) / B (w=0, 家) / C (w=+24, 暖·远)。
+##     每层是平直 3D 空间: 地板 {z=-2, w=w_i} (精确 2-平面距离场) + 各自色温的星空。
+##   · 虫洞 = 连接层的真实 4D 管道 (SDF 实体, 空心、端口喇叭、层内平走段 + 弯入 +w 的竖井):
+##       A→B 井道 (x=-30) / B→C 井道 (x=+30) / B 层内 320m 直线快速通道。
+##   · 穿越 = 4D 飞行 + 管壁碰撞 (沿壁滑动): 管道在 w 方向弯折,
+##     按住 I/K 把视线转入 w 就能沿竖井爬升 —— 全程连续, 无传送。
+##   · 平直层内光线不弯; 虫洞的可见效果 = 管道几何本身 + 透过端口看到的另一层。
 ##
 ## 自动化截图:
-##   godot --path . -- --shot=<png> [--shot-frame=N] [--shot-mode=0|1]
-##        [--shot-pos=x,y,z,w] [--shot-yaw=deg] [--shot-pitch=deg] [--ss=1.5]
+##   godot --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-yaw=deg]
+##        [--shot-pitch=deg] [--shot-ana-yaw=deg] [--shot-ana-pitch=deg]
+##        [--shot-mode=0|1] [--ss=1.5]
 
-const THROAT_R := 3.0   # Morris–Thorne 喉半径 b₀
+# ---- 世界常量 (与 shaders/wormhole4d.gdshader 保持一致) ----
+const SHEET_W := [-24.0, 0.0, 24.0]           # 三张平行层的 w
+const FLOOR_Z := -2.0
+const PORT_R := 3.4
+const THROAT_R := 2.4
+const EXPRESS_R := 2.6
+const TUBE_WALL := 0.4
 
-const MODE_NAMES := ["① 第一人称", "② 嵌入图 (w,ρ)"]
+const TUBE_BC: Array = [Vector4(30.0, 0.0, 0.0, 0.0), Vector4(30.0, 0.0, -16.0, 0.0), Vector4(30.0, 0.0, -21.0, 17.0), Vector4(30.0, 0.0, -1.0, 24.0)]
+const TUBE_AB: Array = [Vector4(-30.0, 0.0, 0.0, -24.0), Vector4(-30.0, 0.0, -16.0, -24.0), Vector4(-30.0, 0.0, -21.0, -7.0), Vector4(-30.0, 0.0, -1.0, 0.0)]
+const TUBE_BB: Array = [Vector4(-160.0, 0.0, 0.0, 0.0), Vector4(160.0, 0.0, 0.0, 0.0)]
+const TUBES: Array = [TUBE_BC, TUBE_AB, TUBE_BB]
 
-const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型嵌入图 | F 超采样
+const MODE_NAMES := ["① 第一人称", "② 楼层图 (x,w)"]
+const UNI_NAMES := ["宇宙A (冷)", "宇宙B (家)", "宇宙C (暖·远)"]
+
+const HELP_TEXT := """V 楼层图 (x,w) — 三层平行宇宙 + 井道 + 快速通道 | F 超采样
 鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
-你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
-· 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是另一个宇宙 (星空色温不同, 回头可返回)
-· l = 到喉口的有符号固有距离: l 过零的那一步就是穿越; W 是 4D 嵌入高度,
-  在弯曲空间里移动时它自然跟着变 (就像球面上走路经纬度会变) —— 不代表穿越
-· 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
-· 嵌入图 (V) 显示这条弯曲空间在 4D 欧氏空间中的等距嵌入 ρ = b₀·cosh(w/b₀)"""
+── 四维转动 (按住): I/K 俯仰进入±w (看进第四维)   J/L 滚转入w   U/O 偏摆入w   G 等角双旋转 ──
+三个平行宇宙层: A (w=-24, 冷) / B (w=0, 家) / C (w=+24, 暖·远), 地板下是 4D 体空间。
+· 右前方 30m: B→C 井道端口 — 飞进去, 层内平走后管道弯入 +w, 按住 I 跟随竖井爬升到宇宙 C
+· 左后方 30m: A→B 井道 — 通往宇宙 A
+· B 层内的 320m 直线快速通道: 两端端口, 穿过即完成远距移动 (全程可见另一端)
+· 层是平直的: 光线不弯; 虫洞的全部效果 = 真实管道几何 + 透过端口看到的另一层"""
 
-# 相机状态: 4D 位置 + 4D 正交标架 (n_axis = 超曲面法线, 其余三个切向)
-# 初始: 悬浮在宇宙B (w=+6) 的悬链面上空, 朝漏斗轴心 (−w) 看: 前方是喉口与宇宙A
-var pos := Vector4(11.45, 0.0, 1.6, 6.0)
-var n_axis := Vector4(1, 0, 0, 0)
-var fwd := Vector4(0.0, 0.0, -0.12, -1.0)
-var right := Vector4(0.0, 0.0, 1.0, 0.0)
-var up := Vector4(0.0, 1.0, 0.0, 0.0)
+# 相机: 4D 自由飞行, 4D 正交标架 (0=fwd 1=right 2=up 3=ana)
+var pos := Vector4(0.0, 1.7, 2.0, 0.0)
+var frame: Array[Vector4] = [
+	Vector4(0.0, 0.0, -1.0, 0.0),   # fwd    -z
+	Vector4(1.0, 0.0, 0.0, 0.0),    # right  +x
+	Vector4(0.0, 1.0, 0.0, 0.0),    # up     +y (层内"上")
+	Vector4(0.0, 0.0, 0.0, 1.0),    # ana    +w
+]
 var vel := Vector4.ZERO
-var speed := 6.0
+var speed := 7.0
 var mouse_sens := 0.0021
 var rot_speed := 1.05
 var view_mode := 0
 var ss := 1.5
 var captured := false
 var time_s := 0.0
+var sheet := 1                 # 当前层 (0=A 1=B 2=C)
+var in_tube := -1              # 所在管道索引 (-1 = 不在管内)
 
 # ---- 截图自检 ----
 var shot_path := ""
@@ -54,6 +67,8 @@ var shot_pos := Vector4.ZERO
 var shot_pos_set := false
 var shot_yaw := 0.0
 var shot_pitch := 0.0
+var shot_ana_yaw := 0.0
+var shot_ana_pitch := 0.0
 var shot_ss := 0.0
 var frame_count := 0
 
@@ -71,21 +86,23 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
 	if shot_pos_set:
-		pos = surf_project(shot_pos)
-	else:
-		pos = surf_project(pos)
+		pos = shot_pos
 	_init_frame()
 	if shot_yaw != 0.0:
-		_rot_pair(1, 2, shot_yaw)      # 正 = 向右转
+		_rot_pair(0, 1, shot_yaw)       # 正 = 向右转
 	if shot_pitch != 0.0:
-		_rot_pair(1, 3, shot_pitch)    # 正 = 抬头
+		_rot_pair(0, 2, shot_pitch)     # 正 = 抬头
+	if shot_ana_yaw != 0.0:
+		_rot_pair(0, 3, shot_ana_yaw)   # 正 = 视线转入 +w
+	if shot_ana_pitch != 0.0:
+		_rot_pair(2, 3, shot_ana_pitch)
 	if shot_mode >= 0:
 		view_mode = shot_mode
 	if shot_ss > 0.0:
 		ss = shot_ss
 	_apply_scale()
 	help_label.text = HELP_TEXT
-	toast.text = "点击窗口捕获鼠标 → 面前是通向喉口的悬链面; 穿过喉口 = 到达另一个宇宙"
+	toast.text = "点击窗口捕获鼠标 → 右前方 30m 是 B→C 井道端口, 飞进去 (按住 I 跟随竖井爬升)"
 
 
 func _parse_shot_args() -> void:
@@ -105,6 +122,10 @@ func _parse_shot_args() -> void:
 			shot_yaw = deg_to_rad(float(a.substr(11)))
 		elif a.begins_with("--shot-pitch="):
 			shot_pitch = deg_to_rad(float(a.substr(13)))
+		elif a.begins_with("--shot-ana-yaw="):
+			shot_ana_yaw = deg_to_rad(float(a.substr(15)))
+		elif a.begins_with("--shot-ana-pitch="):
+			shot_ana_pitch = deg_to_rad(float(a.substr(17)))
 		elif a.begins_with("--ss="):
 			shot_ss = float(a.substr(5))
 
@@ -124,8 +145,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			speed = maxf(speed / 1.18, 1.0)
 	elif event is InputEventMouseMotion and captured:
-		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
-		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
+		_rot_pair(0, 1, event.relative.x * mouse_sens)    # 偏航: 右移右转
+		_rot_pair(0, 2, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_ESCAPE:
 			_set_captured(false)
@@ -141,104 +162,186 @@ func _set_captured(on: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_VISIBLE
 
 
-# ---- 超曲面 ρ = b₀·cosh(w/b₀) 的 GDScript 副本 ----
-
-func surf_f(p: Vector4) -> float:
-	return Vector3(p.x, p.y, p.z).length() - THROAT_R * cosh(p.w / THROAT_R)
-
-
-func surf_grad(p: Vector4) -> Vector4:
-	var rho := Vector3(p.x, p.y, p.z).length()
-	var g3 := Vector3.ZERO
-	if rho > 0.0001:
-		g3 = Vector3(p.x, p.y, p.z) / rho
-	return Vector4(g3.x, g3.y, g3.z, -sinh(p.w / THROAT_R))
-
-
-func surf_project(p: Vector4) -> Vector4:
-	for i in 3:
-		var g := surf_grad(p)
-		var f := surf_f(p)
-		p -= g * f / maxf(g.dot(g), 0.000001)
-	return p
-
-
-func surf_normal(p: Vector4) -> Vector4:
-	return surf_grad(p).normalized()
-
-
-# ---- 悬链面地板 (θ=π/2 截面) ----
-
-func cat_sdf(p: Vector4) -> float:
-	var rho_xy := Vector2(p.x, p.y).length()
-	var dr := rho_xy - THROAT_R * cosh(p.w / THROAT_R)
-	return signf(p.z) * sqrt(p.z * p.z + dr * dr)
-
-
-func cat_normal(p: Vector4) -> Vector4:
-	var e := 0.01
-	return Vector4(
-		cat_sdf(p + Vector4(e, 0, 0, 0)) - cat_sdf(p - Vector4(e, 0, 0, 0)),
-		cat_sdf(p + Vector4(0, e, 0, 0)) - cat_sdf(p - Vector4(0, e, 0, 0)),
-		cat_sdf(p + Vector4(0, 0, e, 0)) - cat_sdf(p - Vector4(0, 0, e, 0)),
-		cat_sdf(p + Vector4(0, 0, 0, e)) - cat_sdf(p - Vector4(0, 0, 0, e))
-	).normalized()
-
-
-## 标架维持: n_axis 对齐曲面法线, 其余三轴施密特正交化 (保持 fwd 方向)
-func _make_ortho() -> void:
-	n_axis = surf_normal(pos)
-	fwd -= n_axis * fwd.dot(n_axis)
-	right -= n_axis * right.dot(n_axis) + fwd * right.dot(fwd)
-	up -= n_axis * up.dot(n_axis) + fwd * up.dot(fwd) + right * up.dot(right)
-	fwd = fwd.normalized()
-	right = right.normalized()
-	up = up.normalized()
-
-
-## 标架初始化: fwd = 指向喉口; up = 悬链面地板法向 (头顶方向);
-## right = fwd × up (右手系, 保证画面不镜像)
+## 初始标架: fwd 指向 B→C 井道端口 (层内方向), up = 层内竖直 (+z), right/ana 补全
 func _init_frame() -> void:
-	n_axis = surf_normal(pos)
-	fwd = Vector4.ZERO - pos
-	fwd -= n_axis * fwd.dot(n_axis)
-	fwd = fwd.normalized()
-	up = cat_normal(pos)
-	up -= n_axis * up.dot(n_axis)
-	up -= fwd * up.dot(fwd)
-	up = up.normalized()
-	var r3 := Vector3(fwd.x, fwd.y, fwd.z).cross(Vector3(up.x, up.y, up.z))
-	right = Vector4(r3.x, r3.y, r3.z, 0.0)
-	right -= n_axis * right.dot(n_axis)
-	right = right.normalized()
+	var to_port := Vector4(30.0, 0.0, 0.0, 0.0) - pos
+	to_port.w = 0.0
+	frame[0] = to_port.normalized()
+	frame[2] = Vector4(0.0, 0.0, 1.0, 0.0) - frame[0] * frame[2].dot(frame[0])
+	frame[2] = frame[2].normalized()
+	var f3 := Vector3(frame[0].x, frame[0].y, frame[0].z)
+	var u3 := Vector3(frame[2].x, frame[2].y, frame[2].z)
+	var r3 := f3.cross(u3)
+	frame[1] = Vector4(r3.x, r3.y, r3.z, 0.0)
+	frame[1] -= frame[3] * frame[1].dot(frame[3])
+	frame[1] = frame[1].normalized()
+	frame[3] = Vector4(0.0, 0.0, 0.0, 1.0) - frame[0] * frame[3].dot(frame[0]) - frame[1] * frame[3].dot(frame[1]) - frame[2] * frame[3].dot(frame[2])
+	frame[3] = frame[3].normalized()
 
 
-## 在 (frame[i], frame[j]) 平面内旋转 (0=n 1=fwd 2=right 3=up)
+## 在 (frame[i], frame[j]) 平面内旋转 4D 标架
 func _rot_pair(i: int, j: int, ang: float) -> void:
 	if ang == 0.0:
 		return
-	var vi := _frame_get(i)
-	var vj := _frame_get(j)
+	var vi := frame[i]
+	var vj := frame[j]
 	var c := cos(ang)
 	var s := sin(ang)
-	_frame_set(i, vi * c + vj * s)
-	_frame_set(j, -vi * s + vj * c)
+	frame[i] = vi * c + vj * s
+	frame[j] = -vi * s + vj * c
 
 
-func _frame_get(i: int) -> Vector4:
-	match i:
-		0: return n_axis
-		1: return fwd
-		2: return right
-		_: return up
+## 施密特正交化 (保持 fwd 方向), 抑制浮点漂移
+func _make_ortho() -> void:
+	frame[0] = frame[0].normalized()
+	frame[1] -= frame[0] * frame[1].dot(frame[0])
+	frame[2] -= frame[0] * frame[2].dot(frame[0]) + frame[1] * frame[2].dot(frame[1])
+	frame[3] -= frame[0] * frame[3].dot(frame[0]) + frame[1] * frame[3].dot(frame[1]) + frame[2] * frame[3].dot(frame[2])
+	frame[1] = frame[1].normalized()
+	frame[2] = frame[2].normalized()
+	frame[3] = frame[3].normalized()
 
 
-func _frame_set(i: int, v: Vector4) -> void:
-	match i:
-		0: n_axis = v
-		1: fwd = v
-		2: right = v
-		_: up = v
+# ---- 4D SDF 的 GDScript 副本 (与着色器同一数学, 用于碰撞) ----
+
+func _seg_dist(p: Vector4, a: Vector4, b: Vector4) -> float:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / ab.dot(ab), 0.0, 1.0)
+	return (p - (a + ab * t)).length()
+
+
+func _seg_center(p: Vector4, a: Vector4, b: Vector4) -> Vector4:
+	var ab := b - a
+	var t := clampf((p - a).dot(ab) / ab.dot(ab), 0.0, 1.0)
+	return a + ab * t
+
+
+func _nearest_on_path(p: Vector4, pts: Array) -> Vector4:
+	var best := _seg_center(p, pts[0], pts[1])
+	var bd := (p - best).length()
+	for i in range(1, pts.size() - 1):
+		var c := _seg_center(p, pts[i], pts[i + 1])
+		var d := (p - c).length()
+		if d < bd:
+			bd = d
+			best = c
+	return best
+
+
+func _tube_bore_r(p: Vector4, pts: Array) -> float:
+	var d_end := minf((p - pts[0]).length(), (p - pts[pts.size() - 1]).length())
+	var blend := 9.0 if pts.size() > 2 else 10.0
+	var s: float = 1.0 - clampf(d_end / blend, 0.0, 1.0)
+	var r_mid := THROAT_R if pts.size() > 2 else EXPRESS_R
+	var r_port := PORT_R if pts.size() > 2 else EXPRESS_R + 0.8
+	return r_mid + (r_port - r_mid) * s * s
+
+
+func _shaft_sdf(p: Vector4, pts: Array) -> float:
+	var axis := 1e9
+	for i in pts.size() - 1:
+		axis = minf(axis, _seg_dist(p, pts[i], pts[i + 1]))
+	var d_end := minf((p - pts[0]).length(), (p - pts[pts.size() - 1]).length())
+	var blend := 9.0 if pts.size() > 2 else 10.0
+	var s: float = 1.0 - clampf(d_end / blend, 0.0, 1.0)
+	var r_mid := THROAT_R if pts.size() > 2 else EXPRESS_R
+	var r_port := PORT_R if pts.size() > 2 else EXPRESS_R + 0.8
+	var r := r_mid + (r_port - r_mid) * s * s
+	var shell := maxf(axis - r, (r - TUBE_WALL) - axis)
+	shell = maxf(shell, (p - pts[0]).dot((pts[0] - pts[1]).normalized()))
+	shell = maxf(shell, (p - pts[pts.size() - 1]).dot((pts[pts.size() - 1] - pts[pts.size() - 2]).normalized()))
+	return shell
+
+
+func _straight_sdf(p: Vector4, a: Vector4, b: Vector4) -> float:
+	var ab := b - a
+	var dir := ab.normalized()
+	var t := clampf((p - a).dot(ab) / ab.dot(ab), 0.0, 1.0)
+	var axis := (p - (a + ab * t)).length()
+	var d_end := minf((p - a).length(), (p - b).length())
+	var s: float = 1.0 - clampf(d_end / 10.0, 0.0, 1.0)
+	var r := EXPRESS_R + (PORT_R + 0.8 - EXPRESS_R) * s * s
+	var shell := maxf(axis - r, (r - TUBE_WALL) - axis)
+	shell = maxf(shell, (p - a).dot(-dir))
+	shell = maxf(shell, (p - b).dot(dir))
+	return shell
+
+
+func _tubes_sdf(p: Vector4) -> float:
+	return minf(_shaft_sdf(p, TUBE_BC), minf(_shaft_sdf(p, TUBE_AB), _straight_sdf(p, TUBE_BB[0], TUBE_BB[1])))
+
+
+func _tubes_grad(p: Vector4) -> Vector4:
+	var e := 0.01
+	return Vector4(
+		_tubes_sdf(p + Vector4(e, 0, 0, 0)) - _tubes_sdf(p - Vector4(e, 0, 0, 0)),
+		_tubes_sdf(p + Vector4(0, e, 0, 0)) - _tubes_sdf(p - Vector4(0, e, 0, 0)),
+		_tubes_sdf(p + Vector4(0, 0, e, 0)) - _tubes_sdf(p - Vector4(0, 0, e, 0)),
+		_tubes_sdf(p + Vector4(0, 0, 0, e)) - _tubes_sdf(p - Vector4(0, 0, 0, e))
+	).normalized()
+
+
+func _nearest_sheet(w: float) -> int:
+	if w < -12.0:
+		return 0
+	if w < 12.0:
+		return 1
+	return 2
+
+
+## 碰撞: ① 管壁实体推出 (4D 梯度); ② 管内约束在内壁并沿壁滑动;
+## ③ 不在管内时锁定所在层 (w + 地板)。没有传送: 层的切换只发生在管道内。
+func _collide() -> void:
+	# 管壁实体: 在壳内沿 4D 梯度推出
+	var d := _tubes_sdf(pos)
+	if d < 0.0:
+		var g := _tubes_grad(pos)
+		pos -= g * d
+
+	# 最近管道
+	var bi := -1
+	var bc := Vector4.ZERO
+	var bd := 1e9
+	var bb := 0.35
+	for ti in TUBES.size():
+		var pts: Array = TUBES[ti]
+		var c := _nearest_on_path(pos, pts)
+		var dd := (pos - c).length()
+		var bore := _tube_bore_r(pos, pts) - 0.15
+		if dd < bd:
+			bd = dd
+			bc = c
+			bi = ti
+			bb = bore
+
+	# 端口外判定 (沿轴越过端口平面)
+	var beyond_a: bool = (pos - TUBE_BC[0]).dot((TUBE_BC[0] - TUBE_BC[1]).normalized()) > 0.05
+	var beyond_b: bool = (pos - TUBE_BC[3]).dot((TUBE_BC[3] - TUBE_BC[2]).normalized()) > 0.05
+	var beyond_c: bool = (pos - TUBE_AB[0]).dot((TUBE_AB[0] - TUBE_AB[1]).normalized()) > 0.05
+	var beyond_d: bool = (pos - TUBE_AB[3]).dot((TUBE_AB[3] - TUBE_AB[2]).normalized()) > 0.05
+
+	if bd < bb * 0.95 and not beyond_a and not beyond_b and not beyond_c and not beyond_d:
+		# 管内: 约束在内壁, 沿壁滑动
+		if in_tube != bi:
+			in_tube = bi
+			_flash("进入虫洞管道 —— 沿 4D 几何连续穿行")
+		if bd > bb - 0.05 and bd > 0.0001:
+			var outward := (pos - bc) / bd
+			pos = bc + outward * (bb - 0.05)
+			var vout := vel.dot(outward)
+			if vout > 0.0:
+				vel -= outward * vout
+	else:
+		if in_tube >= 0:
+			in_tube = -1
+			sheet = _nearest_sheet(pos.w)
+			_flash("离开管道 → %s" % UNI_NAMES[sheet])
+		# 层约束: w 锁定本层, 地板之上
+		pos.w = SHEET_W[sheet]
+		if pos.z < FLOOR_Z + 0.35:
+			pos.z = FLOOR_Z + 0.35
+			if vel.z < 0.0:
+				vel.z = 0.0
 
 
 func _process(delta: float) -> void:
@@ -246,43 +349,47 @@ func _process(delta: float) -> void:
 
 	# ---- 翻滚 (right, up) ----
 	if Input.is_key_pressed(KEY_Q):
-		_rot_pair(2, 3, rot_speed * delta)
+		_rot_pair(1, 2, rot_speed * delta)
 	if Input.is_key_pressed(KEY_E):
+		_rot_pair(1, 2, -rot_speed * delta)
+	# ---- 四维转动: 视线/机动 进入 ±w ----
+	if Input.is_key_pressed(KEY_I):
+		_rot_pair(0, 3, rot_speed * delta)    # 俯仰进入 +w (看进第四维)
+	if Input.is_key_pressed(KEY_K):
+		_rot_pair(0, 3, -rot_speed * delta)
+	if Input.is_key_pressed(KEY_J):
+		_rot_pair(1, 3, rot_speed * delta)    # 滚转进入 +w
+	if Input.is_key_pressed(KEY_L):
+		_rot_pair(1, 3, -rot_speed * delta)
+	if Input.is_key_pressed(KEY_U):
+		_rot_pair(2, 3, rot_speed * delta)    # 偏摆进入 +w
+	if Input.is_key_pressed(KEY_O):
 		_rot_pair(2, 3, -rot_speed * delta)
+	if Input.is_key_pressed(KEY_G):
+		_rot_pair(0, 3, rot_speed * 0.8 * delta)
+		_rot_pair(1, 2, rot_speed * 0.8 * delta)
+	_make_ortho()
 
-	# ---- 切向 3-空间移动 ----
+	# ---- 4D 移动 ----
 	var dir := Vector4.ZERO
 	if Input.is_key_pressed(KEY_W):
-		dir += fwd
+		dir += frame[0]
 	if Input.is_key_pressed(KEY_S):
-		dir -= fwd
+		dir -= frame[0]
 	if Input.is_key_pressed(KEY_D):
-		dir += right
+		dir += frame[1]
 	if Input.is_key_pressed(KEY_A):
-		dir -= right
+		dir -= frame[1]
 	if Input.is_key_pressed(KEY_SPACE):
-		dir += up
+		dir += frame[2]
 	if Input.is_key_pressed(KEY_C):
-		dir -= up
+		dir -= frame[2]
 	var target := dir.normalized() * speed if dir.length_squared() > 0.000001 else Vector4.ZERO
 	vel = vel.lerp(target, 1.0 - exp(-8.0 * delta))
-	var prev := pos
 	pos += vel * delta
 
-	# ---- 地板碰撞: 悬链面地板之上 (cat_sdf ≥ 0.35) ----
-	var dcat := cat_sdf(pos)
-	if dcat < 0.35:
-		var cn := cat_normal(pos)
-		pos += cn * (0.35 - dcat)
-		# 去掉向下的速度分量
-		var vdown := vel.dot(-cn)
-		if vdown > 0.0:
-			vel += cn * vdown
-
-	# ---- 约束在超曲面上, 标架跟随曲面 ----
-	pos = surf_project(pos)
-	var _unused_prev := prev
-	_make_ortho()
+	# ---- 碰撞 (层约束 + 管壁) ----
+	_collide()
 
 	_push_uniforms()
 	_update_hud(delta)
@@ -291,21 +398,19 @@ func _process(delta: float) -> void:
 
 func _push_uniforms() -> void:
 	mat.set_shader_parameter("cam_pos", pos)
-	mat.set_shader_parameter("cam_fwd", fwd)
-	mat.set_shader_parameter("cam_right", right)
-	mat.set_shader_parameter("cam_up", up)
+	mat.set_shader_parameter("cam_fwd", frame[0])
+	mat.set_shader_parameter("cam_right", frame[1])
+	mat.set_shader_parameter("cam_up", frame[2])
 	mat.set_shader_parameter("time_s", time_s)
 	mat.set_shader_parameter("view_mode", float(view_mode))
-	mat.set_shader_parameter("throat_r", THROAT_R)
 
 
 func _update_hud(delta: float) -> void:
 	coord_label.text = "[color=#ff8a80]X[/color] %+.1f    [color=#7ee787]Y[/color] %+.1f    [color=#79c0ff]Z[/color] %+.1f    [color=#d2a8ff]W[/color] %+.1f" % [
 		pos.x, pos.y, pos.z, pos.w]
-	var l := THROAT_R * sinh(pos.w / THROAT_R)   # 有符号固有距离: 过零 = 穿越喉口
-	var uni := "宇宙B (暖)" if pos.w > 0.0 else "宇宙A (冷)"
-	pos_label.text = "[%s]  l(到喉口) %+.1f m   宇宙 %s   速度 %.1f   SS %.1fx" % [
-		MODE_NAMES[view_mode], l, uni, speed, ss]
+	var tag := "  [管内]" if in_tube >= 0 else ""
+	pos_label.text = "[%s]  宇宙 %s   w %+.1f   速度 %.1f   SS %.1fx%s" % [
+		MODE_NAMES[view_mode], UNI_NAMES[sheet], pos.w, speed, ss, tag]
 	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
 
 
