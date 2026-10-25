@@ -54,6 +54,7 @@ var view_mode := 0
 var ss := 1.5
 var captured := false
 var time_s := 0.0
+var sheet := 1                 # 当前所在层 (0=B 1=C)
 var used_bc := false            # 跨层虫洞: 本条"旅程"已使用 (离开盘面区域后重置)
 var used_ex := false            # 快速通道: 同上
 
