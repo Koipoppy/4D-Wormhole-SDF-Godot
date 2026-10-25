@@ -158,8 +158,8 @@ vec3 render_scene(vec2 uv){
 		// 喉口外侧收紧步长 (透镜充分积分)
 		float dB = length(p - vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_B));
 		float dC = length(p - vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_C));
-		float d3 = length(p - vec4(EX_E1_X, EX_YZ.x, EX_YZ.y, W_B));
-		float d4 = length(p - vec4(EX_E2_X, EX_YZ.x, EX_YZ.y, W_B));
+		float d3 = length(p - vec4(EX_X1, EX_YZ.x, EX_YZ.y, W_B));
+		float d4 = length(p - vec4(EX_X2, EX_YZ.x, EX_YZ.y, W_B));
 		float dm = min(min(dB, dC), min(d3, d4));
 		float dt = min(s.x * 0.9, 3.0);
 		if (dm > mouth_r){
@@ -169,8 +169,8 @@ vec3 render_scene(vec2 uv){
 		// ---- 引力弯曲 (四盘心, 与步长耦合) ----
 		bend_ray(v, p, vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_B), dt);
 		bend_ray(v, p, vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_C), dt);
-		bend_ray(v, p, vec4(EX_E1_X, EX_YZ.x, EX_YZ.y, W_B), dt);
-		bend_ray(v, p, vec4(EX_E2_X, EX_YZ.x, EX_YZ.y, W_B), dt);
+		bend_ray(v, p, vec4(EX_X1, EX_YZ.x, EX_YZ.y, W_B), dt);
+		bend_ray(v, p, vec4(EX_X2, EX_YZ.x, EX_YZ.y, W_B), dt);
 
 		// ---- 圆盘喉口穿越 (平面对应, 方向不变, 无缝) ----
 		vec4 prev = p;
@@ -187,21 +187,21 @@ vec3 render_scene(vec2 uv){
 				used_bc = true;
 			}
 		}
-		// 快速通道对: 跨越 x = EX_E1_X 或 EX_E2_X 平面且交点在盘内 → x ± 240
-		if (!used_ex && (prev.x - EX_E1_X) * (p.x - EX_E1_X) < 0.0){
-			float tt = (EX_E1_X - prev.x) / (p.x - prev.x);
+		// 快速通道对: 跨越 x = EX_X1 或 EX_X2 平面且交点在盘内 → x ± 240
+		if (!used_ex && (prev.x - EX_X1) * (p.x - EX_X1) < 0.0){
+			float tt = (EX_X1 - prev.x) / (p.x - prev.x);
 			vec2 off = vec2(prev.y + (p.y - prev.y) * tt - EX_YZ.x,
 			                prev.z + (p.z - prev.z) * tt - EX_YZ.y);
 			if (length(off) < mouth_r){
-				p.x += EX_E2_X - EX_E1_X;
+				p.x += EX_X2 - EX_X1;
 				used_ex = true;
 			}
-		} else if (!used_ex && (prev.x - EX_E2_X) * (p.x - EX_E2_X) < 0.0){
-			float tt = (EX_E2_X - prev.x) / (p.x - prev.x);
+		} else if (!used_ex && (prev.x - EX_X2) * (p.x - EX_X2) < 0.0){
+			float tt = (EX_X2 - prev.x) / (p.x - prev.x);
 			vec2 off = vec2(prev.y + (p.y - prev.y) * tt - EX_YZ.x,
 			                prev.z + (p.z - prev.z) * tt - EX_YZ.y);
 			if (length(off) < mouth_r){
-				p.x += EX_E1_X - EX_E2_X;
+				p.x += EX_X1 - EX_X2;
 				used_ex = true;
 			}
 		}
@@ -210,7 +210,7 @@ vec3 render_scene(vec2 uv){
 		if (used_bc && abs(p.z - DISC_Z) > 14.0){
 			used_bc = false;
 		}
-		if (used_ex && abs(p.x - EX_E1_X) > 30.0 && abs(p.x - EX_E2_X) > 30.0){
+		if (used_ex && abs(p.x - EX_X1) > 30.0 && abs(p.x - EX_X2) > 30.0){
 			used_ex = false;
 		}
 	}
@@ -265,8 +265,8 @@ vec3 floor_map(vec2 uv){
 	float dm = 1e9;
 	dm = min(dm, length(vec2(qx - DISC_BC_XY.x, qw - W_B)));
 	dm = min(dm, length(vec2(qx - DISC_BC_XY.x, qw - W_C)));
-	dm = min(dm, length(vec2(qx - EX_E1_X, qw - W_B)));
-	dm = min(dm, length(vec2(qx - EX_E2_X, qw - W_B)));
+	dm = min(dm, length(vec2(qx - EX_X1, qw - W_B)));
+	dm = min(dm, length(vec2(qx - EX_X2, qw - W_B)));
 	col = mix(col, vec3(0.35, 0.8, 1.0), (1.0 - smoothstep(0.0, 1.0, dm)) * 0.95);
 	// 相机标记
 	float dc = length(vec2(qx - cam_pos.x, qw - cam_pos.w));
