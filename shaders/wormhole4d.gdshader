@@ -198,6 +198,11 @@ vec3 render_scene(vec2 uv){
 		v = normalize(v);
 		travel += h;
 
+		// 缠绕光线终止: 绕喉多圈后用逃逸方向采星空 (物理近似, 避免纯黑)
+		if (travel > 200.0){
+			break;
+		}
+
 		if (abs(p.w) > W_ESCAPE){
 			break;                            // 逃逸到宇宙深处 → 星空
 		}
