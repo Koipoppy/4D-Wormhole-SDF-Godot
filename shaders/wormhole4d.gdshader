@@ -1,51 +1,111 @@
 // ============================================================================
-//  四维空间 SDF 引擎 + 虫洞 —— 平行层 + 圆盘喉口 (v22)
+//  四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 同空间零厚度喉口对 (v34)
 //
-//  数学模型:
-//   · 两个宇宙 = w 轴上的两张平行层: B (w=0, 家) / C (w=+24, 远·暖)。
-//     每层是平直 3D 空间: 地板超平面 {z=-2, w=w_i} 的精确 2-平面距离场。
-//   · 虫洞口 = 圆盘 (半径 mouth_r): 一对圆盘位于同一 (x,y,z)、只差 w ——
-//     跨越盘面平面且交点在盘内时执行平移映射 p.w ±= 24 (方向不变)。
-//     映射发生在盘面上 (零厚度喉极限), 等距变换 ⇒ 盘面两侧图像严格衔接,
-//     穿越光影连续 —— 这是 Morris–Thorne 喉零厚度极限的标准实现。
-//   · 喉口附近光线弯曲: Schwarzschild 光子轨道伪牛顿积分 (每个盘心一台"引力源"),
-//     爱因斯坦环 / 盘缘多重像 = 方程的涌现。
-//   · 第二对圆盘 (同在 B 层, x=±120) = 同一层内的快速远距通道 (Δ = 240m)。
+//  · 主虫洞 = Morris–Thorne 度规的超悬链面嵌入 (与 0.0.2 同一实现):
+//        ρ = b₀·cosh(w/b₀) ,  ρ = |xyz|
+//    两个宇宙 = 同一张弯曲流形的两端: B (w<0, 家·冷) / C (w>0, 远·暖)。
+//    光线沿流形测地线传播, 透镜与多重像是度规的真实结果。
 //
-//  圆盘对: D_B(30,3,-40,w=0) ↔ D_C(30,3,-40,w=24), Δ=(0,0,0,24)
-//          D_E1(-120,3,60,w=0) ↔ D_E2(120,3,60,w=0), Δ=(240,0,0,0)
+//  · 第二对虫洞 (连接同一个三维空间): 两个口都开在宇宙B 内。
+//    口 = 火山式圆顶顶部的球口 (地板高度场隆起 + 球面开洞)。
+//    对口按 **零厚度喉口 (薄壳等同)** 连接 —— Visser 薄壳虫洞的标准做法:
+//    跨过球口时位置按平移映射、方向按球面法向反射, 等距变换 ⇒ 口两侧图像严格衔接,
+//    没有焊接面、没有物理管体, 因此渲染与主喉口同样干净。
+//  · 两个彩色球体 (红/青) = 4D 球 ∩ 流形, 标出两个口。
 // ============================================================================
 
 shader_type canvas_item;
 render_mode unshaded;
 
-uniform vec4 cam_pos = vec4(0.0, 1.7, 2.0, 0.0);
-uniform vec4 cam_fwd = vec4(0.0, 0.0, -1.0, 0.0);
-uniform vec4 cam_right = vec4(1.0, 0.0, 0.0, 0.0);
+uniform vec4 cam_pos = vec4(30.16, 0.0, 1.6, -9.0);
+uniform vec4 cam_fwd = vec4(-1.0, 0.0, 0.0, 0.0);
+uniform vec4 cam_right = vec4(0.0, 0.0, 1.0, 0.0);
 uniform vec4 cam_up = vec4(0.0, 1.0, 0.0, 0.0);
 uniform float fov_scale = 1.0;
 uniform float aspect = 1.7778;
 uniform float time_s = 0.0;
-uniform float view_mode = 0.0;     // 0 第一人称 | 1 楼层图 (x,w)
-uniform float mouth_r = 3.0;       // 喉口圆盘半径
-uniform float rs = 1.5;            // 喉口质量 (史瓦西半径): 光线弯曲强度
+uniform float view_mode = 0.0;     // 0 第一人称 | 1 嵌入图 (w, ρ)
+uniform float throat_r = 3.0;      // Morris–Thorne 喉半径 b₀
 
-const int MAX_STEPS = 400;
-const float MAX_DIST = 500.0;
-const float FLOOR_Z = -2.0;
+const int MAX_STEPS = 1200;
+const float W_ESCAPE = 55.0;
 
-const float W_B = 0.0;     // 宇宙 B (家)
-const float W_C = 24.0;    // 宇宙 C (远·暖)
-
-// ---- 圆盘喉口 (与 scripts/main.gd 保持一致) ----
-const float DISC_Z = 3.0;                          // 跨层虫洞对的盘面 z (悬空 5m)
-const vec2 DISC_BC_XY = vec2(30.0, -40.0);         // 盘心 (x,y)
-const float EX_X1 = -120.0;                        // 快速通道 E1 盘面 x
-const float EX_X2 = 120.0;                         // 快速通道 E2 盘面 x
-const vec2 EX_YZ = vec2(0.0, 3.0);                 // 快速通道盘心 (y,z)
+// ---- 同空间喉口对: 两个球口 + 火山圆顶 (与 scripts/main.gd 保持一致) ----
+const vec4 MA = vec4(0.0,  20.10,  9.0,  -7.8);   // 口 A 中心 (火山顶)
+const vec4 MB = vec4(0.0, -30.20,  9.0,  -9.0);   // 口 B 中心 (火山顶)
+const float RM = 5.0;                              // 球口半径
+const float HILL_H = 9.0;                          // 火山圆顶高度
+const float HILL_S = 7.0;                          // 火山圆顶半径尺度
+const vec4 OBJ0_C = vec4(0.0,  13.00,  2.50,  -6.5);  // 红球
+const vec4 OBJ1_C = vec4(0.0, -23.00,  2.50,  -7.5);  // 青球
+const float OBJ_R = 2.6;
 
 // ============================================================================
-//  哈希 / 星空 (按所在宇宙着色: B 中性偏冷 / C 暖金)
+//  超曲面 ρ = b₀·cosh(w/b₀)
+// ============================================================================
+
+float surf_f(vec4 p){
+	return length(p.xyz) - throat_r * cosh(p.w / throat_r);
+}
+
+vec4 surf_grad(vec4 p){
+	float rho = length(p.xyz);
+	vec3 g3 = (rho > 0.0001) ? p.xyz / rho : vec3(0.0);
+	return vec4(g3, -sinh(p.w / throat_r));
+}
+
+vec4 surf_project(vec4 p){
+	for (int i = 0; i < 3; i++){
+		vec4 g = surf_grad(p);
+		float f = surf_f(p);
+		p -= g * f / max(dot(g, g), 1e-7);
+	}
+	return p;
+}
+
+vec4 surf_normal(vec4 p){
+	return normalize(surf_grad(p));
+}
+
+// ============================================================================
+//  地板: 悬链面 θ=π/2 截面 + 火山圆顶高度场
+// ============================================================================
+
+float hill(vec4 p){
+	float dA = length(vec3(p.x - MA.x, p.y - MA.y, p.w - MA.w));
+	float dB = length(vec3(p.x - MB.x, p.y - MB.y, p.w - MB.w));
+	return HILL_H * (exp(-pow(dA / HILL_S, 2.0)) + exp(-pow(dB / HILL_S, 2.0)));
+}
+
+float cat_sdf(vec4 p){
+	float zz = p.z - hill(p);
+	float rho_xy = length(p.xy);
+	float dr = rho_xy - throat_r * cosh(p.w / throat_r);
+	return sign(zz) * sqrt(zz * zz + dr * dr);
+}
+
+vec4 cat_normal(vec4 p){
+	float e = 0.01;
+	return normalize(vec4(
+		cat_sdf(p + vec4(e, 0.0, 0.0, 0.0)) - cat_sdf(p - vec4(e, 0.0, 0.0, 0.0)),
+		cat_sdf(p + vec4(0.0, e, 0.0, 0.0)) - cat_sdf(p - vec4(0.0, e, 0.0, 0.0)),
+		cat_sdf(p + vec4(0.0, 0.0, e, 0.0)) - cat_sdf(p - vec4(0.0, 0.0, e, 0.0)),
+		cat_sdf(p + vec4(0.0, 0.0, 0.0, e)) - cat_sdf(p - vec4(0.0, 0.0, 0.0, e))));
+}
+
+vec3 cat_albedo(vec4 p){
+	vec3 coord = vec3(p.x, p.y, p.w) * 0.55;
+	float ck = mod(floor(coord.x) + floor(coord.y) + floor(coord.z), 2.0);
+	float fw = fwidth(coord.x) + fwidth(coord.y) + fwidth(coord.z);
+	if (isnan(fw) || isinf(fw) || fw < 0.0){
+		fw = 1.0;
+	}
+	ck = mix(ck, 0.5, clamp(fw * 1.5, 0.0, 1.0));
+	return mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+}
+
+// ============================================================================
+//  星空
 // ============================================================================
 
 float hash14(vec4 p){
@@ -54,7 +114,7 @@ float hash14(vec4 p){
 	return fract((p.x + p.y) * p.z);
 }
 
-vec3 star_layer(vec4 rd, float scale, float thr, float amp, vec3 tint){
+vec3 star_layer(vec4 rd, float scale, float thr, float amp, float uni){
 	vec4 g = rd * scale;
 	vec4 id = floor(g);
 	vec4 f = fract(g) - 0.5;
@@ -64,180 +124,161 @@ vec3 star_layer(vec4 rd, float scale, float thr, float amp, vec3 tint){
 		float k = (h - thr) / (1.0 - thr);
 		float b = (1.0 - smoothstep(0.0, 0.4, length(f))) * (0.3 + 0.7 * k);
 		b *= 0.65 + 0.35 * sin(time_s * (1.0 + k * 6.0) + h * 613.0);
+		vec3 tint = mix(vec3(1.0, 0.82, 0.62), vec3(0.65, 0.78, 1.0), fract(h * 37.0));
+		tint = mix(tint, tint.zyx, uni * 0.55);
 		col = tint * b * amp * 1.7;
 	}
 	return col;
 }
 
-// 所在层 w → 星空 (B 中性 / C 暖金)
-vec3 sky_col(vec4 rd, float w){
-	float wC = smoothstep(6.0, 18.0, w);
-	vec3 base = mix(vec3(0.010, 0.012, 0.030), vec3(0.030, 0.016, 0.008), wC);
-	vec3 stT = mix(vec3(1.0), vec3(1.25, 0.90, 0.55), wC);
-	vec4 rdw = rd + vec4(0.0, 0.0, 0.0, w * 0.01);
-	vec3 col = base;
-	col += star_layer(rdw, 15.0, 0.980, 1.0, stT);
-	col += star_layer(rdw, 28.0, 0.970, 0.6, stT);
-	col += star_layer(rdw, 52.0, 0.958, 0.45, stT);
+vec3 sky_col(vec4 v){
+	float uni = smoothstep(-3.0, 3.0, v.w * 6.0);
+	vec3 col = mix(vec3(0.008, 0.010, 0.026), vec3(0.026, 0.012, 0.008), uni);
+	col += star_layer(v, 15.0, 0.980, 1.0, uni);
+	col += star_layer(v, 28.0, 0.970, 0.65, uni);
+	col += star_layer(v, 52.0, 0.958, 0.45, uni);
+	return col;
+}
+
+vec4 sun_dir(float t){
+	return normalize(vec4(0.35 + 0.2 * sin(t * 0.05), 0.25, 0.6, 0.25 * sin(t * 0.03)));
+}
+
+// ============================================================================
+//  同空间零厚度喉口: 段与球口相交 → 平移映射 + 球面法向反射 (等距)
+// ============================================================================
+
+bool ball_transfer(vec4 prev, inout vec4 p, inout vec4 v, vec4 m1, vec4 m2){
+	vec4 d = p - prev;
+	float a = dot(d, d);
+	if (a < 1e-12){
+		return false;
+	}
+	vec4 f = prev - m1;
+	float b = 2.0 * dot(f, d);
+	float c = dot(f, f) - RM * RM;
+	float disc = b * b - 4.0 * a * c;
+	if (disc < 0.0){
+		return false;
+	}
+	float sq = sqrt(disc);
+	float t = (-b - sq) / (2.0 * a);
+	if (t < 0.0 || t > 1.0){
+		return false;
+	}
+	vec4 hitp = prev + d * t;
+	vec4 nrm = (hitp - m1) / RM;
+	vec4 dir = normalize(v - 2.0 * dot(v, nrm) * nrm);
+	vec4 base = m2 + (hitp - m1);
+	p = base + dir * (sqrt(a) * (1.0 - t));
+	v = dir;
+	return true;
+}
+
+// ============================================================================
+//  嵌入图 (w, ρ)
+// ============================================================================
+
+vec3 embed_diagram(vec2 uv){
+	float W = mix(-32.0, 32.0, uv.x);
+	float R = mix(44.0, 0.0, uv.y);
+	float curve = throat_r * cosh(W / throat_r);
+	vec3 col = vec3(0.012, 0.015, 0.028);
+	vec2 g = abs(fract(vec2(uv.x * 16.0, uv.y * 11.0)) - 0.5);
+	col += vec3(0.05, 0.07, 0.10) * (1.0 - smoothstep(0.0, 0.06, min(g.x, g.y)));
+	float dc = abs(R - curve);
+	col = mix(col, vec3(0.95, 0.85, 0.45), (1.0 - smoothstep(0.0, 0.35, dc)) * 0.95);
+	float dc_cam = length(vec2(W - cam_pos.w, R - length(cam_pos.xyz)));
+	col = mix(col, vec3(0.3, 0.9, 0.5), (1.0 - smoothstep(0.0, 0.8, dc_cam)) * 0.9);
+	float dth = length(vec2(W, R - throat_r));
+	col = mix(col, vec3(0.4, 0.75, 1.0), (1.0 - smoothstep(0.0, 0.5, dth)) * 0.8);
+	col *= 1.0 - 0.35 * dot(uv - 0.5, uv - 0.5) * 2.0;
 	return col;
 }
 
 // ============================================================================
-//  引力透镜: Schwarzschild 光子轨道伪牛顿积分 (每个盘心一个引力源)
-// ============================================================================
-
-void bend_ray(inout vec4 v, vec4 p, vec4 m, float dt){
-	vec4 rel = p - m;
-	float r2 = dot(rel, rel);
-	if (r2 < 400.0 && r2 > 0.04){
-		float h2 = max(r2 - dot(rel, v) * dot(rel, v), 0.0);
-		float r5 = r2 * r2 * sqrt(r2);
-		v = normalize(v - (1.5 * rs * h2 / r5) * rel * dt);
-	}
-}
-
-// ============================================================================
-//  场景 SDF (完整 4D): 两张层的地板超平面
-// ============================================================================
-
-vec2 map(vec4 p){
-	// 地板 = 超平面 {z=FLOOR_Z, w=w_i} 的精确 2-平面距离
-	// (w 项自动门控: 只有所在层附近的地板会被命中)
-	float dB = length(vec2(p.z - FLOOR_Z, p.w - W_B));
-	float dC = length(vec2(p.z - FLOOR_Z, p.w - W_C));
-	vec2 res = vec2(dB, 1.0);
-	if (dC < res.x) res = vec2(dC, 2.0);
-	return res;
-}
-
-// 地板法线 (解析): {z=-2, w=w_i} 面的法向在 (z,w) 子空间内
-vec4 floor_normal(float mid, vec4 p){
-	float dw = (mid < 1.5) ? (p.w - W_B) : (p.w - W_C);
-	return normalize(vec4(0.0, p.z - FLOOR_Z, 0.0, dw));
-}
-
-// 地板棋盘 (解析抗锯齿; 按层着色: B 中性冷 / C 暖)
-vec3 floor_albedo(float mid, vec4 p){
-	float ck = mod(floor(p.x * 0.5) + floor(p.y * 0.5), 2.0);
-	float fw = fwidth(p.x * 0.5) + fwidth(p.y * 0.5);
-	ck = mix(ck, 0.5, clamp(fw * 1.5, 0.0, 1.0));
-	float uni = smoothstep(6.0, 18.0, p.w);
-	vec3 a = mix(vec3(0.095, 0.105, 0.140), vec3(0.125, 0.080, 0.058), uni);
-	vec3 b = mix(vec3(0.270, 0.300, 0.370), vec3(0.380, 0.270, 0.175), uni);
-	return mix(a, b, ck);
-}
-
-// ============================================================================
-//  主渲染: 平直光线步进 + 圆盘喉口映射 + 引力弯曲
+//  主渲染: 流形上的测地线步进 + 同空间球口过渡
 // ============================================================================
 
 vec3 render_scene(vec2 uv){
 	vec2 ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
 	ndc.x *= aspect;
 	vec4 v = normalize(cam_fwd + (cam_right * ndc.x + cam_up * ndc.y) * fov_scale);
-	vec4 p = cam_pos;
+	vec4 p = surf_project(cam_pos);
 
-	// 每条光线每对喉口只映射一次; 离开盘面区域后重置 (允许返回)
-	bool used_bc = false;
-	bool used_ex = false;
 	float travel = 0.0;
 	bool hit = false;
-	float hit_mid = 1.0;
+	int obj_hit = -1;
 
 	for (int i = 0; i < MAX_STEPS; i++){
-		vec2 s = map(p);
-		if (s.x < 0.0015 + 0.0025 * travel){
+		float df = cat_sdf(p);
+		float dobj = min(length(p - OBJ0_C) - OBJ_R, length(p - OBJ1_C) - OBJ_R);
+		if (dobj < 0.02){
+			obj_hit = (length(p - OBJ0_C) < length(p - OBJ1_C)) ? 0 : 1;
+			break;
+		}
+		if (abs(df) < 0.02){
 			hit = true;
-			hit_mid = s.y;
 			break;
 		}
-		if (travel > MAX_DIST){
-			break;
-		}
+		float h = clamp(0.5 * abs(df) + 0.04, 0.05, 0.7);
+		float near_throat = clamp(1.0 - length(p.xyz) / (throat_r * 6.0), 0.0, 1.0);
+		h *= 1.0 - 0.55 * near_throat;
 
-		// 喉口外侧收紧步长 (透镜充分积分)
-		float dB = length(p - vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_B));
-		float dC = length(p - vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_C));
-		float d3 = length(p - vec4(EX_X1, EX_YZ.x, EX_YZ.y, W_B));
-		float d4 = length(p - vec4(EX_X2, EX_YZ.x, EX_YZ.y, W_B));
-		float dm = min(min(dB, dC), min(d3, d4));
-		float dt = min(s.x * 0.9, 3.0);
-		if (dm > mouth_r){
-			dt = min(dt, max((dm - mouth_r) * 0.35, 0.06));
-		}
-
-		// ---- 引力弯曲 (四盘心, 与步长耦合) ----
-		bend_ray(v, p, vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_B), dt);
-		bend_ray(v, p, vec4(DISC_BC_XY.x, DISC_BC_XY.y, DISC_Z, W_C), dt);
-		bend_ray(v, p, vec4(EX_X1, EX_YZ.x, EX_YZ.y, W_B), dt);
-		bend_ray(v, p, vec4(EX_X2, EX_YZ.x, EX_YZ.y, W_B), dt);
-
-		// ---- 圆盘喉口穿越 (平面对应, 方向不变, 无缝) ----
 		vec4 prev = p;
-		p += v * dt;
-		travel += dt;
+		p += v * h;
+		p = surf_project(p);
+		vec4 n = surf_normal(p);
+		v -= n * dot(v, n);
+		v = normalize(v);
+		travel += h;
 
-		// 跨层对: 跨越 z = DISC_Z 平面且交点在盘内 → w ± 24
-		if (!used_bc && (prev.z - DISC_Z) * (p.z - DISC_Z) < 0.0){
-			float tt = (DISC_Z - prev.z) / (p.z - prev.z);
-			vec2 off = vec2(prev.x + (p.x - prev.x) * tt - DISC_BC_XY.x,
-			                prev.y + (p.y - prev.y) * tt - DISC_BC_XY.y);
-			if (length(off) < mouth_r){
-				p.w += (p.w < 12.0) ? W_C - W_B : W_B - W_C;
-				used_bc = true;
-			}
-		}
-		// 快速通道对: 跨越 x = EX_X1 或 EX_X2 平面且交点在盘内 → x ± 240
-		if (!used_ex && (prev.x - EX_X1) * (p.x - EX_X1) < 0.0){
-			float tt = (EX_X1 - prev.x) / (p.x - prev.x);
-			vec2 off = vec2(prev.y + (p.y - prev.y) * tt - EX_YZ.x,
-			                prev.z + (p.z - prev.z) * tt - EX_YZ.y);
-			if (length(off) < mouth_r){
-				p.x += EX_X2 - EX_X1;
-				used_ex = true;
-			}
-		} else if (!used_ex && (prev.x - EX_X2) * (p.x - EX_X2) < 0.0){
-			float tt = (EX_X2 - prev.x) / (p.x - prev.x);
-			vec2 off = vec2(prev.y + (p.y - prev.y) * tt - EX_YZ.x,
-			                prev.z + (p.z - prev.z) * tt - EX_YZ.y);
-			if (length(off) < mouth_r){
-				p.x += EX_X1 - EX_X2;
-				used_ex = true;
-			}
-		}
+		// 同空间球口: 跨口位置映射 + 方向反射 (等距, 无缝)
+		if (ball_transfer(prev, p, v, MA, MB)){}
+		else if (ball_transfer(prev, p, v, MB, MA)){}
 
-		// 离开盘面区域后重置 (允许再次穿越)
-		if (used_bc && abs(p.z - DISC_Z) > 14.0){
-			used_bc = false;
+		if (travel > 200.0){
+			break;
 		}
-		if (used_ex && abs(p.x - EX_X1) > 30.0 && abs(p.x - EX_X2) > 30.0){
-			used_ex = false;
+		if (abs(p.w) > W_ESCAPE){
+			break;
 		}
 	}
 
-	vec3 sky = sky_col(v, cam_pos.w);
-	vec3 col;
+	if (!hit && obj_hit < 0){
+		float df_end = cat_sdf(p);
+		if (abs(df_end) < 1.2){
+			hit = true;
+			travel = max(travel, 180.0);
+		}
+	}
 
-	if (hit){
-		vec4 n = floor_normal(hit_mid, p);
-		vec4 ldir = normalize(vec4(0.35, 0.30, 0.55, 0.20));
+	vec3 col;
+	if (obj_hit >= 0){
+		vec4 c = (obj_hit == 0) ? OBJ0_C : OBJ1_C;
+		vec3 base = (obj_hit == 0) ? vec3(0.95, 0.15, 0.12) : vec3(0.05, 0.65, 1.0);
+		vec4 n = normalize(p - c);
+		vec4 ldir = sun_dir(time_s);
+		float dif = clamp(abs(dot(n, ldir)), 0.0, 1.0);
+		col = base * (0.45 + 0.65 * dif) + base * 0.18;
+	} else if (hit){
+		vec4 n = cat_normal(p);
+		vec4 ldir = sun_dir(time_s);
 		float dif = clamp(dot(n, ldir), 0.0, 1.0);
 		float amb = 0.30;
-		vec3 alb = floor_albedo(hit_mid, p);
-		col = alb * (amb + 0.9 * dif);
-		float uni = smoothstep(6.0, 18.0, p.w);
-		vec3 fogc = mix(vec3(0.050, 0.060, 0.100), vec3(0.090, 0.055, 0.040), uni);
+		vec3 alb = cat_albedo(p);
+		col = alb * (amb * 0.85 + 0.78 * dif);
+		float uni = smoothstep(-3.0, 3.0, p.w * 2.0);
+		vec3 fogc = mix(vec3(0.045, 0.055, 0.095), vec3(0.085, 0.050, 0.038), uni);
 		float fog = 1.0 - exp(-0.010 * travel);
 		col = mix(col, fogc, clamp(fog, 0.0, 1.0));
 	} else {
-		col = sky;
+		col = sky_col(v);
 	}
 
-	// 色调映射 + gamma
 	col = col / (1.0 + col);
 	col = pow(col, vec3(0.6));
 
-	// 晕影 + 准星 (清晰小点, 纵横比校正)
 	vec2 vq = uv - 0.5;
 	col *= 1.0 - 0.5 * dot(vq, vq);
 	vec2 cs = uv - 0.5;
@@ -249,36 +290,10 @@ vec3 render_scene(vec2 uv){
 	return col;
 }
 
-// ============================================================================
-//  诊断视图 ②: 楼层图 (x, w) —— 两层平行宇宙 + 圆盘喉口 + 跨层连线
-// ============================================================================
-
-vec3 floor_map(vec2 uv){
-	vec2 suv = uv - 0.5;
-	float qx = cam_pos.x + suv.x * 400.0 * aspect;
-	float qw = cam_pos.w + suv.y * 70.0;
-	vec3 col = vec3(0.012, 0.015, 0.028);
-	// 两层地板线 (w = W_B / W_C)
-	float dfl = min(abs(qw - W_B), abs(qw - W_C));
-	col = mix(col, vec3(0.45, 0.70, 0.55), (1.0 - smoothstep(0.0, 0.4, dfl)) * 0.9);
-	// 喉口圆盘位置 (点)
-	float dm = 1e9;
-	dm = min(dm, length(vec2(qx - DISC_BC_XY.x, qw - W_B)));
-	dm = min(dm, length(vec2(qx - DISC_BC_XY.x, qw - W_C)));
-	dm = min(dm, length(vec2(qx - EX_X1, qw - W_B)));
-	dm = min(dm, length(vec2(qx - EX_X2, qw - W_B)));
-	col = mix(col, vec3(0.35, 0.8, 1.0), (1.0 - smoothstep(0.0, 1.0, dm)) * 0.95);
-	// 相机标记
-	float dc = length(vec2(qx - cam_pos.x, qw - cam_pos.w));
-	col = mix(col, vec3(0.3, 1.0, 0.5), (1.0 - smoothstep(0.0, 1.2, dc)) * 0.9);
-	col *= 1.0 - 0.35 * dot(suv, suv) * 2.0;
-	return col;
-}
-
 void fragment(){
 	vec3 col;
-	if (view_mode > 0.5){
-		col = floor_map(UV);
+	if (view_mode > 0.5 && view_mode < 1.5){
+		col = embed_diagram(UV);
 	} else {
 		col = render_scene(UV);
 	}
