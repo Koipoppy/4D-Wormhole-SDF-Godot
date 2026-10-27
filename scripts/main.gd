@@ -1,56 +1,38 @@
 extends Node
-## 四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 虫洞组件 (v35)
-##
-##  · 主虫洞 = Morris–Thorne 度规的超悬链面嵌入 (与 0.0.2 同一实现):
-##        ρ = b₀·cosh(w/b₀) ,  ρ = |xyz|
-##    两个宇宙 = 同一张弯曲流形的两端: B (w<0, 家·冷) / C (w>0, 远·暖)。
-##    观察者生活在流形上 (位置每帧投影回曲面), 光线沿流形测地线传播。
-##
-##  · 虫洞组件 (见下方 WORMHOLES 表): 指定 入口四维坐标 a、出口四维坐标 b、
-##    口半径 r、截面形状 shape (0=球口 / 1=圆盘口, 圆盘法向 n),
-##    引擎自动生成: 地板火山圆顶 + 口 + 光线/玩家的跨口过渡 + 彩色标记球。
-##    r <= 0 表示禁用该项。主虫洞 (B↔C) 由度规本身给出, 不是组件。
-##
-## 自动化截图:
-##   godot --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-look=x,y,z,w]
-##        [--shot-yaw=deg] [--shot-pitch=deg] [--shot-mode=0|1] [--ss=1.5]
+## v45 光滑双喉口：两个 Morris–Thorne 超悬链面喉口，共享同一个 B/C 宇宙对
+## 每个喉口:  rho_i = R*cosh(w/R)  (i=1,2)
+## 世界 = smin(F1,F2) = 0，其中 smin 是 C∞ 光滑最小值；不是 min 硬并集。
+## 喉口附近权重饱和 -> 精确 Ellis 超悬链面；重叠区用宽度 κ 的光滑颈连接。
+## 玩家/光线在这张 C∞ 超曲面上的测地线连续前进:
+##   B -> 喉口1 -> C(天空) -> 喉口2 -> B。没有任何位置映射/传送。
 
-const THROAT_R := 3.0   # Morris–Thorne 喉半径 b₀
+const THROAT_R := 3.0
+const BLEND_K := 0.35     # 光滑混合宽度 (m)
+const C1 := Vector3(-5.0, 9.24, 0.0)
+const C2 := Vector3(5.0, 9.24, 0.0)
+const W0 := -6.0
+const GREEN_C := Vector3(0.0, 9.24, 2.2)
+const GREEN_R := 2.2
+const MK1_C := Vector3(-8.6, 6.8, 0.8)
+const MK2_C := Vector3(-7.0, 6.0, 0.8)
+const MK_R := 0.55
+const FLOOR_CLEAR := 0.35
 
-# ======================= 虫洞组件表 (增删虫洞只改这里) =======================
-# 每项: a=入口四维坐标, b=出口四维坐标, r=口半径(<=0 禁用),
-#       shape=0 球口 / 1 圆盘口, n=圆盘法向(球口忽略)
-const WORMHOLES: Array = [
-	{
-		"a": Vector4(0.0,  20.10,  9.0,  -7.8),
-		"b": Vector4(0.0, -30.20,  9.0,  -9.0),
-		"r": 5.0,
-		"shape": 0,
-		"n": Vector4(0.0, 0.0, 1.0, 0.0),
-	},
-]
-const HILL_H := 9.0       # 口部火山圆顶高度
-const HILL_S := 7.0       # 火山圆顶半径尺度
-const MARKER_R := 2.6     # 标记球半径 (仅标记, 无碰撞)
-# ==============================================================================
+const MODE_NAMES := ["① 第一人称", "② 嵌入图"]
 
-const MODE_NAMES := ["① 第一人称", "② 嵌入图 (w,ρ)"]
-
-const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型嵌入图 | F 超采样
+const HELP_TEXT := """v45 光滑双喉口 | V 嵌入图 | F 超采样
 鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
-你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
-· 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是宇宙 C (远·暖, w>0), 回头可返回宇宙 B (家, w<0)
-· 两侧火山式圆顶顶部的球口 = 同空间虫洞对 (虫洞组件, 两个口都在宇宙B 里):
-  红球/青球标出两端; 从一个口飞进去, 立刻从另一个口出来
-· 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
-· 嵌入图 (V) 显示这条弯曲空间在 4D 欧氏空间中的等距嵌入 ρ = b₀·cosh(w/b₀)"""
+两个喉口都是 Morris–Thorne 超悬链面 rho=R*cosh(w/R):
+· 世界是两张超悬链面的 C∞ 光滑混合 smin(F1,F2)，不是 min 硬并集
+· 从 B 飞进任一喉口 → 沿光滑颈到 C (天空) → 从另一个喉口回到 B
+· 全程位置/法向连续, 没有映射/传送; 光线沿光滑超曲面测地线传播
+· 入口旁: 绿色 4D 球 / 银色 4D 盒; 中间绿色球是参照物"""
 
-# 相机状态: 4D 位置 + 4D 正交标架 (n_axis = 流形法线, 其余三个切向)
-var pos := Vector4(11.45, 0.0, 1.6, -6.0)
+var pos := Vector4(0.0, -11.0, 4.6, W0)
 var n_axis := Vector4(1, 0, 0, 0)
-var fwd := Vector4(0.0, 0.0, -0.12, 1.0)
-var right := Vector4(0.0, 0.0, 1.0, 0.0)
-var up := Vector4(0.0, 1.0, 0.0, 0.0)
+var fwd := Vector4(0, 1, -0.2, 0)
+var right := Vector4(1, 0, 0, 0)
+var up := Vector4(0, 0, 1, 0)
 var vel := Vector4.ZERO
 var speed := 6.0
 var mouse_sens := 0.0021
@@ -60,7 +42,6 @@ var ss := 1.5
 var captured := false
 var time_s := 0.0
 
-# ---- 截图自检 ----
 var shot_path := ""
 var shot_frame := 40
 var shot_mode := -1
@@ -76,10 +57,10 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
-@onready var coord_label: RichTextLabel = $UILayer/CoordLabel
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
+@onready var coord_label: RichTextLabel = $UILayer/CoordLabel
 
 
 func _ready() -> void:
@@ -87,20 +68,21 @@ func _ready() -> void:
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
 	if shot_pos_set:
-		pos = surf_project(shot_pos)
+		pos = world_project(shot_pos)
 	else:
-		pos = surf_project(pos)
+		pos = world_project(pos)
 	_init_frame()
 	if shot_look_set:
-		var to_t := shot_look - pos
-		to_t -= n_axis * to_t.dot(n_axis)
-		if to_t.length_squared() > 0.000001:
-			fwd = to_t.normalized()
+		var d := shot_look - pos
+		d -= n_axis * d.dot(n_axis)
+		if d.length_squared() > 1e-6:
+			fwd = d.normalized()
+			up = cat_normal(pos)
 			up -= n_axis * up.dot(n_axis)
 			up -= fwd * up.dot(fwd)
 			up = up.normalized()
-			var rr := Vector3(fwd.x, fwd.y, fwd.z).cross(Vector3(up.x, up.y, up.z))
-			right = Vector4(rr.x, rr.y, rr.z, 0.0)
+			var r3 := Vector3(fwd.x, fwd.y, fwd.z).cross(Vector3(up.x, up.y, up.z))
+			right = Vector4(r3.x, r3.y, r3.z, 0.0)
 			right -= n_axis * right.dot(n_axis)
 			right = right.normalized()
 	if shot_yaw != 0.0:
@@ -113,7 +95,7 @@ func _ready() -> void:
 		ss = shot_ss
 	_apply_scale()
 	help_label.text = HELP_TEXT
-	toast.text = "点击窗口捕获鼠标 → 前方喉口通宇宙C; 两侧火山顶的球口 = 同空间虫洞对 (红/青球标记)"
+	toast.text = "v45 光滑双喉口: 从任一球口飞进去, 沿光滑颈穿过 C 天空, 从另一口出来"
 
 
 func _parse_shot_args() -> void:
@@ -174,53 +156,76 @@ func _set_captured(on: bool) -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED if on else Input.MOUSE_MODE_VISIBLE
 
 
-# ---- 超曲面 ρ = b₀·cosh(w/b₀) ----
+# ---- 0.0.2 超悬链面：两个喉口 ----
+func f1(p: Vector4) -> float:
+	return Vector3(p.x, p.y, p.z).distance_to(C1) - THROAT_R * cosh(p.w / THROAT_R)
 
-func surf_f(p: Vector4) -> float:
-	return Vector3(p.x, p.y, p.z).length() - THROAT_R * cosh(p.w / THROAT_R)
+func f2(p: Vector4) -> float:
+	return Vector3(p.x, p.y, p.z).distance_to(C2) - THROAT_R * cosh(p.w / THROAT_R)
+
+func g1(p: Vector4) -> Vector4:
+	var v := Vector3(p.x, p.y, p.z) - C1
+	v = v.normalized()
+	return Vector4(v.x, v.y, v.z, -sinh(p.w / THROAT_R))
+
+func g2(p: Vector4) -> Vector4:
+	var v := Vector3(p.x, p.y, p.z) - C2
+	v = v.normalized()
+	return Vector4(v.x, v.y, v.z, -sinh(p.w / THROAT_R))
 
 
-func surf_grad(p: Vector4) -> Vector4:
-	var rho := Vector3(p.x, p.y, p.z).length()
-	var g3 := Vector3.ZERO
-	if rho > 0.0001:
-		g3 = Vector3(p.x, p.y, p.z) / rho
-	return Vector4(g3.x, g3.y, g3.z, -sinh(p.w / THROAT_R))
+# ---- C∞ 光滑最小值 smin(F1,F2) ----
+# smin(a,b;κ) = min(a,b) - κ log(1 + exp(-|a-b|/κ))
+# 喉口附近一项权重饱和 -> 精确 Ellis 超悬链面；重叠区用宽度 κ 的光滑颈连接。
+func _sigmoid(x: float) -> float:
+	return 1.0 / (1.0 + exp(clampf(x, -60.0, 60.0)))
 
 
-func surf_project(p: Vector4) -> Vector4:
-	for i in 3:
-		var g := surf_grad(p)
-		var f := surf_f(p)
-		p -= g * f / maxf(g.dot(g), 0.000001)
+func smin(a: float, b: float) -> float:
+	var m := minf(a, b)
+	var d := absf(a - b)
+	return m - BLEND_K * log(1.0 + exp(-d / BLEND_K))
+
+
+func smin_grad(p: Vector4) -> Vector4:
+	var a := f1(p)
+	var b := f2(p)
+	# wa = 1/(1+exp((a-b)/κ))：a<b 时 wa≈1，a>b 时 wa≈0
+	var wa := _sigmoid((a - b) / BLEND_K)
+	return g1(p) * wa + g2(p) * (1.0 - wa)
+
+
+func world_f(p: Vector4) -> float:
+	return smin(f1(p), f2(p))
+
+
+func world_grad(p: Vector4) -> Vector4:
+	return smin_grad(p)
+
+
+func world_project(p: Vector4) -> Vector4:
+	for i in 4:
+		var g := world_grad(p)
+		p -= g * world_f(p) / maxf(g.dot(g), 1e-6)
 	return p
 
 
-func surf_normal(p: Vector4) -> Vector4:
-	return surf_grad(p).normalized()
+func world_normal(p: Vector4) -> Vector4:
+	return world_grad(p).normalized()
 
 
-# ---- 虫洞组件: 火山圆顶 + 跨口过渡 ----
-
-func mouth_hill(p: Vector4, m: Vector4) -> float:
-	var d := Vector3(p.x - m.x, p.y - m.y, p.w - m.w).length()
-	return exp(-pow(d / HILL_S, 2.0))
-
-
-func hill(p: Vector4) -> float:
-	var h := 0.0
-	for wh in WORMHOLES:
-		if float(wh["r"]) <= 0.0:
-			continue
-		h += mouth_hill(p, wh["a"]) + mouth_hill(p, wh["b"])
-	return HILL_H * h
+func cat_sdf_i(p: Vector4, c: Vector3) -> float:
+	var rho_xy := Vector2(p.x - c.x, p.y - c.y).length()
+	var dr := rho_xy - THROAT_R * cosh(p.w / THROAT_R)
+	return signf(p.z) * sqrt(p.z * p.z + dr * dr)
 
 
 func cat_sdf(p: Vector4) -> float:
-	var zz := p.z - hill(p)
-	var rho_xy := Vector2(p.x, p.y).length()
-	var dr := rho_xy - THROAT_R * cosh(p.w / THROAT_R)
-	return signf(zz) * sqrt(zz * zz + dr * dr)
+	if p.w > 0.0:
+		return 1e9   # C 侧是天空, 没有地板
+	# 地板也用同一套光滑权重混合，避免接缝处地板法向跳变
+	var wa := _sigmoid((f1(p) - f2(p)) / BLEND_K)
+	return wa * cat_sdf_i(p, C1) + (1.0 - wa) * cat_sdf_i(p, C2)
 
 
 func cat_normal(p: Vector4) -> Vector4:
@@ -233,78 +238,10 @@ func cat_normal(p: Vector4) -> Vector4:
 	).normalized()
 
 
-## 组件接口: 检查并执行跨口过渡 (球口 / 圆盘口)
-## 返回 true 表示本帧发生了穿越 (pos/vel 已更新)
-func wh_transfer(prev: Vector4, now: Vector4, m1: Vector4, m2: Vector4, r: float, shape: int, nrm: Vector4) -> bool:
-	if r <= 0.0:
-		return false
-	var d := now - prev
-	var a := d.dot(d)
-	if a < 1e-12:
-		return false
-	if shape == 0:
-		# ---- 球口: 段与球面相交 → 位置平移 + 方向按球面法向反射 ----
-		var f := prev - m1
-		var b := 2.0 * f.dot(d)
-		var c := f.dot(f) - r * r
-		var disc := b * b - 4.0 * a * c
-		if disc < 0.0:
-			return false
-		var t := (-b - sqrt(disc)) / (2.0 * a)
-		if t < 0.0 or t > 1.0:
-			return false
-		var hitp := prev + d * t
-		var nrm_s := (hitp - m1) / r
-		var vlen := vel.length()
-		var dir := (vel - nrm_s * (2.0 * vel.dot(nrm_s))).normalized()
-		pos = m2 + (hitp - m1) + dir * (d.length() * (1.0 - t))
-		vel = dir * vlen
-		_flash("穿过同空间虫洞 → 另一个火山口")
-		return true
-	# ---- 圆盘口: 段与盘面相交且在盘半径内 → 位置平移, 方向不变 ----
-	var s0 := (prev - m1).dot(nrm)
-	var s1 := (now - m1).dot(nrm)
-	if s0 * s1 >= 0.0:
-		return false
-	var t := s0 / (s0 - s1)
-	var hitp := prev + d * t
-	if (hitp - m1).length() > r:
-		return false
-	pos = m2 + (hitp - m1) + d * (1.0 - t)
-	_flash("穿过同空间虫洞 → 另一个火山口")
-	return true
-
-
-func _wh_cross(prev: Vector4) -> void:
-	for wh in WORMHOLES:
-		var r: float = wh["r"]
-		if r <= 0.0:
-			continue
-		var a: Vector4 = wh["a"]
-		var b: Vector4 = wh["b"]
-		var shape: int = wh["shape"]
-		var n: Vector4 = wh["n"]
-		if wh_transfer(prev, pos, a, b, r, shape, n):
-			return
-		if wh_transfer(prev, pos, b, a, r, shape, n):
-			return
-
-
-# ---- 标架 ----
-
-func _make_ortho() -> void:
-	n_axis = surf_normal(pos)
-	fwd -= n_axis * fwd.dot(n_axis)
-	right -= n_axis * right.dot(n_axis) + fwd * right.dot(fwd)
-	up -= n_axis * up.dot(n_axis) + fwd * up.dot(fwd) + right * up.dot(right)
-	fwd = fwd.normalized()
-	right = right.normalized()
-	up = up.normalized()
-
-
+# ---- 标架 / 控制 ----
 func _init_frame() -> void:
-	n_axis = surf_normal(pos)
-	fwd = Vector4.ZERO - pos
+	n_axis = world_normal(pos)
+	fwd = Vector4(0, 9.24, 1.8, W0) - pos
 	fwd -= n_axis * fwd.dot(n_axis)
 	fwd = fwd.normalized()
 	up = cat_normal(pos)
@@ -315,6 +252,16 @@ func _init_frame() -> void:
 	right = Vector4(r3.x, r3.y, r3.z, 0.0)
 	right -= n_axis * right.dot(n_axis)
 	right = right.normalized()
+
+
+func _make_ortho() -> void:
+	n_axis = world_normal(pos)
+	fwd -= n_axis * fwd.dot(n_axis)
+	right -= n_axis * right.dot(n_axis) + fwd * right.dot(fwd)
+	up -= n_axis * up.dot(n_axis) + fwd * up.dot(fwd) + right * up.dot(right)
+	fwd = fwd.normalized()
+	right = right.normalized()
+	up = up.normalized()
 
 
 func _rot_pair(i: int, j: int, ang: float) -> void:
@@ -346,45 +293,29 @@ func _frame_set(i: int, v: Vector4) -> void:
 
 func _process(delta: float) -> void:
 	time_s += delta
-
 	if Input.is_key_pressed(KEY_Q):
 		_rot_pair(2, 3, rot_speed * delta)
 	if Input.is_key_pressed(KEY_E):
 		_rot_pair(2, 3, -rot_speed * delta)
-
 	var dir := Vector4.ZERO
-	if Input.is_key_pressed(KEY_W):
-		dir += fwd
-	if Input.is_key_pressed(KEY_S):
-		dir -= fwd
-	if Input.is_key_pressed(KEY_D):
-		dir += right
-	if Input.is_key_pressed(KEY_A):
-		dir -= right
-	if Input.is_key_pressed(KEY_SPACE):
-		dir += up
-	if Input.is_key_pressed(KEY_C):
-		dir -= up
-	var target := dir.normalized() * speed if dir.length_squared() > 0.000001 else Vector4.ZERO
+	if Input.is_key_pressed(KEY_W): dir += fwd
+	if Input.is_key_pressed(KEY_S): dir -= fwd
+	if Input.is_key_pressed(KEY_D): dir += right
+	if Input.is_key_pressed(KEY_A): dir -= right
+	if Input.is_key_pressed(KEY_SPACE): dir += up
+	if Input.is_key_pressed(KEY_C): dir -= up
+	var target := dir.normalized() * speed if dir.length_squared() > 1e-6 else Vector4.ZERO
 	vel = vel.lerp(target, 1.0 - exp(-8.0 * delta))
-	var prev := pos
 	pos += vel * delta
-
-	# ---- 虫洞组件: 跨口过渡 ----
-	_wh_cross(prev)
-
-	# ---- 地板碰撞: 悬链面地板 + 火山坡之上 ----
 	var dcat := cat_sdf(pos)
-	if dcat < 0.35:
+	if dcat < FLOOR_CLEAR:
 		var cn := cat_normal(pos)
-		pos += cn * (0.35 - dcat)
-		var vdown := vel.dot(-cn)
-		if vdown > 0.0:
-			vel += cn * vdown
-
-	pos = surf_project(pos)
+		pos += cn * (FLOOR_CLEAR - dcat)
+		var vd := vel.dot(-cn)
+		if vd > 0.0:
+			vel += cn * vd
+	pos = world_project(pos)
 	_make_ortho()
-
 	_push_uniforms()
 	_update_hud(delta)
 	_maybe_screenshot()
@@ -398,29 +329,28 @@ func _push_uniforms() -> void:
 	mat.set_shader_parameter("time_s", time_s)
 	mat.set_shader_parameter("view_mode", float(view_mode))
 	mat.set_shader_parameter("throat_r", THROAT_R)
+	mat.set_shader_parameter("blend_k", BLEND_K)
+	mat.set_shader_parameter("c1", C1)
+	mat.set_shader_parameter("c2", C2)
+	mat.set_shader_parameter("green_c", GREEN_C)
+	mat.set_shader_parameter("green_r", GREEN_R)
+	mat.set_shader_parameter("mk1_c", MK1_C)
+	mat.set_shader_parameter("mk2_c", MK2_C)
+	mat.set_shader_parameter("mk1_r", MK_R)
+	mat.set_shader_parameter("mk2_r", MK_R)
 
 
-func _update_hud(delta: float) -> void:
-	coord_label.text = "[color=#ff8a80]X[/color] %+.1f    [color=#7ee787]Y[/color] %+.1f    [color=#79c0ff]Z[/color] %+.1f    [color=#d2a8ff]W[/color] %+.1f" % [
-		pos.x, pos.y, pos.z, pos.w]
-	var u := pos.w / THROAT_R
-	var uni := "宇宙C (远·暖)" if pos.w > 0.0 else "宇宙B (家)"
-	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f   %s   速度 %.1f   SS %.1fx" % [
-		MODE_NAMES[view_mode], u, pos.w, Vector3(pos.x, pos.y, pos.z).length(), uni, speed, ss]
-	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
+func _update_hud(_delta: float) -> void:
+	coord_label.text = "[color=#7ee787]X[/color] %+.1f  [color=#79c0ff]Y[/color] %+.1f  [color=#ffd166]Z[/color] %+.1f  [color=#d2a8ff]W[/color] %+.1f" % [pos.x, pos.y, pos.z, pos.w]
+	pos_label.text = "v45 光滑双喉口 | w %+.1f | κ %.2f | 速度 %.1f | SS %.1fx" % [pos.w, BLEND_K, speed, ss]
+	toast.modulate.a = maxf(toast.modulate.a - _delta * 0.5, 0.0)
 
 
 func _maybe_screenshot() -> void:
-	if shot_path == "":
-		return
+	if shot_path == "": return
 	frame_count += 1
 	if frame_count >= shot_frame:
 		var img: Image = get_viewport().get_texture().get_image()
 		img.save_png(shot_path)
 		print("SHOT_SAVED ", shot_path)
 		get_tree().quit()
-
-
-func _flash(msg: String) -> void:
-	toast.text = msg
-	toast.modulate.a = 1.5
