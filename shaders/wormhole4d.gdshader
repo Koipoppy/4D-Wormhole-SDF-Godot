@@ -1,17 +1,17 @@
 // ============================================================================
-//  四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 同空间零厚度喉口对 (v34)
+//  四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 虫洞组件 (v35)
 //
 //  · 主虫洞 = Morris–Thorne 度规的超悬链面嵌入 (与 0.0.2 同一实现):
 //        ρ = b₀·cosh(w/b₀) ,  ρ = |xyz|
 //    两个宇宙 = 同一张弯曲流形的两端: B (w<0, 家·冷) / C (w>0, 远·暖)。
 //    光线沿流形测地线传播, 透镜与多重像是度规的真实结果。
 //
-//  · 第二对虫洞 (连接同一个三维空间): 两个口都开在宇宙B 内。
-//    口 = 火山式圆顶顶部的球口 (地板高度场隆起 + 球面开洞)。
-//    对口按 **零厚度喉口 (薄壳等同)** 连接 —— Visser 薄壳虫洞的标准做法:
-//    跨过球口时位置按平移映射、方向按球面法向反射, 等距变换 ⇒ 口两侧图像严格衔接,
-//    没有焊接面、没有物理管体, 因此渲染与主喉口同样干净。
-//  · 两个彩色球体 (红/青) = 4D 球 ∩ 流形, 标出两个口。
+//  · 虫洞组件 (WH0 / WH1): 只需指定 入口四维坐标 A、出口四维坐标 B、
+//    口半径 R、截面形状 SHAPE (0=球口 / 1=圆盘口, 圆盘法向 N), 引擎自动生成:
+//      - 两个口处的地板火山圆顶 (高度场隆起) 与球/盘开口;
+//      - 光线与玩家的跨口过渡 (薄壳等同: 位置平移 + 球面法向反射, 等距无缝);
+//      - 口旁的彩色标记球 (红=入口 / 青=出口, 仅标记, 可穿过)。
+//    R <= 0 表示该组件禁用。主虫洞 (B↔C) 不是组件, 它由度规本身给出。
 // ============================================================================
 
 shader_type canvas_item;
@@ -30,15 +30,24 @@ uniform float throat_r = 3.0;      // Morris–Thorne 喉半径 b₀
 const int MAX_STEPS = 1200;
 const float W_ESCAPE = 55.0;
 
-// ---- 同空间喉口对: 两个球口 + 火山圆顶 (与 scripts/main.gd 保持一致) ----
-const vec4 MA = vec4(0.0,  20.10,  9.0,  -7.8);   // 口 A 中心 (火山顶)
-const vec4 MB = vec4(0.0, -30.20,  9.0,  -9.0);   // 口 B 中心 (火山顶)
-const float RM = 5.0;                              // 球口半径
-const float HILL_H = 9.0;                          // 火山圆顶高度
-const float HILL_S = 7.0;                          // 火山圆顶半径尺度
-const vec4 OBJ0_C = vec4(0.0,  13.00,  2.50,  -6.5);  // 红球
-const vec4 OBJ1_C = vec4(0.0, -23.00,  2.50,  -7.5);  // 青球
-const float OBJ_R = 2.6;
+// ======================= 虫洞组件 (与 scripts/main.gd 保持一致) =======================
+// 虫洞 0
+const vec4 WH0_A = vec4(0.0,  20.10,  9.0,  -7.8);   // 入口四维坐标
+const vec4 WH0_B = vec4(0.0, -30.20,  9.0,  -9.0);   // 出口四维坐标
+const float WH0_R = 5.0;                              // 口半径 (<=0 禁用)
+const int WH0_SHAPE = 0;                              // 截面形状: 0=球口 1=圆盘口
+const vec4 WH0_N = vec4(0.0, 0.0, 1.0, 0.0);          // 圆盘法向 (球口忽略)
+// 虫洞 1 (禁用示例: 把 R 改为 >0 并填 A/B 即可再生成一对虫洞)
+const vec4 WH1_A = vec4(0.0);
+const vec4 WH1_B = vec4(0.0);
+const float WH1_R = 0.0;
+const int WH1_SHAPE = 0;
+const vec4 WH1_N = vec4(0.0, 0.0, 1.0, 0.0);
+
+const float HILL_H = 9.0;     // 口部火山圆顶高度
+const float HILL_S = 7.0;     // 火山圆顶半径尺度
+const float OBJ_R = 2.6;      // 标记球半径
+// ===================================================================================
 
 // ============================================================================
 //  超曲面 ρ = b₀·cosh(w/b₀)
@@ -68,14 +77,28 @@ vec4 surf_normal(vec4 p){
 }
 
 // ============================================================================
-//  地板: 悬链面 θ=π/2 截面 + 火山圆顶高度场
+//  虫洞组件: 火山圆顶高度场
 // ============================================================================
 
-float hill(vec4 p){
-	float dA = length(vec3(p.x - MA.x, p.y - MA.y, p.w - MA.w));
-	float dB = length(vec3(p.x - MB.x, p.y - MB.y, p.w - MB.w));
-	return HILL_H * (exp(-pow(dA / HILL_S, 2.0)) + exp(-pow(dB / HILL_S, 2.0)));
+float mouth_hill(vec4 p, vec4 m){
+	float d = length(vec3(p.x - m.x, p.y - m.y, p.w - m.w));
+	return exp(-pow(d / HILL_S, 2.0));
 }
+
+float hill(vec4 p){
+	float h = 0.0;
+	if (WH0_R > 0.0){
+		h += mouth_hill(p, WH0_A) + mouth_hill(p, WH0_B);
+	}
+	if (WH1_R > 0.0){
+		h += mouth_hill(p, WH1_A) + mouth_hill(p, WH1_B);
+	}
+	return HILL_H * h;
+}
+
+// ============================================================================
+//  地板: 悬链面 θ=π/2 截面 + 火山圆顶
+// ============================================================================
 
 float cat_sdf(vec4 p){
 	float zz = p.z - hill(p);
@@ -145,34 +168,61 @@ vec4 sun_dir(float t){
 }
 
 // ============================================================================
-//  同空间零厚度喉口: 段与球口相交 → 平移映射 + 球面法向反射 (等距)
+//  虫洞组件: 跨口过渡 (薄壳等同, 等距)
+//   球口: 段与球面相交 → 位置平移 + 方向按球面法向反射
+//   圆盘口: 段与盘面相交且在盘半径内 → 位置平移, 方向不变
 // ============================================================================
 
-bool ball_transfer(vec4 prev, inout vec4 p, inout vec4 v, vec4 m1, vec4 m2){
+bool wh_transfer(vec4 prev, inout vec4 p, inout vec4 v, vec4 a, vec4 b, float r, int shape, vec4 nrm){
+	if (r <= 0.0){
+		return false;
+	}
 	vec4 d = p - prev;
-	float a = dot(d, d);
-	if (a < 1e-12){
+	float al = dot(d, d);
+	if (al < 1e-12){
 		return false;
 	}
-	vec4 f = prev - m1;
-	float b = 2.0 * dot(f, d);
-	float c = dot(f, f) - RM * RM;
-	float disc = b * b - 4.0 * a * c;
-	if (disc < 0.0){
+	if (shape == 0){
+		// ---- 球口 ----
+		vec4 f = prev - a;
+		float bl = 2.0 * dot(f, d);
+		float cl = dot(f, f) - r * r;
+		float disc = bl * bl - 4.0 * al * cl;
+		if (disc < 0.0){
+			return false;
+		}
+		float t = (-bl - sqrt(disc)) / (2.0 * al);
+		if (t < 0.0 || t > 1.0){
+			return false;
+		}
+		vec4 hitp = prev + d * t;
+		vec4 n = (hitp - a) / r;
+		vec4 dir = normalize(v - 2.0 * dot(v, n) * n);
+		p = b + (hitp - a) + dir * (sqrt(al) * (1.0 - t));
+		v = dir;
+		return true;
+	}
+	// ---- 圆盘口 ----
+	float s0 = dot(prev - a, nrm);
+	float s1 = dot(p - a, nrm);
+	if (s0 * s1 >= 0.0){
 		return false;
 	}
-	float sq = sqrt(disc);
-	float t = (-b - sq) / (2.0 * a);
-	if (t < 0.0 || t > 1.0){
-		return false;
-	}
+	float t = s0 / (s0 - s1);
 	vec4 hitp = prev + d * t;
-	vec4 nrm = (hitp - m1) / RM;
-	vec4 dir = normalize(v - 2.0 * dot(v, nrm) * nrm);
-	vec4 base = m2 + (hitp - m1);
-	p = base + dir * (sqrt(a) * (1.0 - t));
-	v = dir;
+	if (length(hitp - a) > r){
+		return false;
+	}
+	p = b + (hitp - a) + d * (1.0 - t);
 	return true;
+}
+
+// 标记球位置 (口旁坡面, 自动生成; 仅标记, 可穿过)
+vec4 marker_pos(vec4 m){
+	vec3 base2 = vec3(m.x, m.y, 0.0);
+	vec3 inward = normalize(-base2 + vec3(0.0001, 0.0, 0.0));
+	vec3 q = base2 + inward * (HILL_S * 0.95);
+	return vec4(q.x, q.y, HILL_H * 0.32, m.w);
 }
 
 // ============================================================================
@@ -197,7 +247,7 @@ vec3 embed_diagram(vec2 uv){
 }
 
 // ============================================================================
-//  主渲染: 流形上的测地线步进 + 同空间球口过渡
+//  主渲染: 流形上的测地线步进 + 虫洞组件过渡
 // ============================================================================
 
 vec3 render_scene(vec2 uv){
@@ -212,9 +262,23 @@ vec3 render_scene(vec2 uv){
 
 	for (int i = 0; i < MAX_STEPS; i++){
 		float df = cat_sdf(p);
-		float dobj = min(length(p - OBJ0_C) - OBJ_R, length(p - OBJ1_C) - OBJ_R);
-		if (dobj < 0.02){
-			obj_hit = (length(p - OBJ0_C) < length(p - OBJ1_C)) ? 0 : 1;
+		// 标记球 (4D 球 ∩ 流形, 仅标记)
+		int mi = -1;
+		float dmin = 1e9;
+		if (WH0_R > 0.0){
+			float d0 = length(p - marker_pos(WH0_A)) - OBJ_R;
+			if (d0 < dmin){ dmin = d0; mi = 0; }
+			float d1 = length(p - marker_pos(WH0_B)) - OBJ_R;
+			if (d1 < dmin){ dmin = d1; mi = 1; }
+		}
+		if (WH1_R > 0.0){
+			float d2 = length(p - marker_pos(WH1_A)) - OBJ_R;
+			if (d2 < dmin){ dmin = d2; mi = 2; }
+			float d3 = length(p - marker_pos(WH1_B)) - OBJ_R;
+			if (d3 < dmin){ dmin = d3; mi = 3; }
+		}
+		if (dmin < 0.02){
+			obj_hit = mi;
 			break;
 		}
 		if (abs(df) < 0.02){
@@ -233,9 +297,17 @@ vec3 render_scene(vec2 uv){
 		v = normalize(v);
 		travel += h;
 
-		// 同空间球口: 跨口位置映射 + 方向反射 (等距, 无缝)
-		if (ball_transfer(prev, p, v, MA, MB)){}
-		else if (ball_transfer(prev, p, v, MB, MA)){}
+		// ---- 虫洞组件: 跨口过渡 ----
+		if (WH0_R > 0.0){
+			if (!wh_transfer(prev, p, v, WH0_A, WH0_B, WH0_R, WH0_SHAPE, WH0_N)){
+				wh_transfer(prev, p, v, WH0_B, WH0_A, WH0_R, WH0_SHAPE, WH0_N);
+			}
+		}
+		if (WH1_R > 0.0){
+			if (!wh_transfer(prev, p, v, WH1_A, WH1_B, WH1_R, WH1_SHAPE, WH1_N)){
+				wh_transfer(prev, p, v, WH1_B, WH1_A, WH1_R, WH1_SHAPE, WH1_N);
+			}
+		}
 
 		if (travel > 200.0){
 			break;
@@ -255,9 +327,12 @@ vec3 render_scene(vec2 uv){
 
 	vec3 col;
 	if (obj_hit >= 0){
-		vec4 c = (obj_hit == 0) ? OBJ0_C : OBJ1_C;
-		vec3 base = (obj_hit == 0) ? vec3(0.95, 0.15, 0.12) : vec3(0.05, 0.65, 1.0);
-		vec4 n = normalize(p - c);
+		vec4 mcc = marker_pos(WH0_A);
+		if (obj_hit == 1){ mcc = marker_pos(WH0_B); }
+		else if (obj_hit == 2){ mcc = marker_pos(WH1_A); }
+		else if (obj_hit == 3){ mcc = marker_pos(WH1_B); }
+		vec3 base = (obj_hit == 0 || obj_hit == 2) ? vec3(0.95, 0.15, 0.12) : vec3(0.05, 0.65, 1.0);
+		vec4 n = normalize(p - mcc);
 		vec4 ldir = sun_dir(time_s);
 		float dif = clamp(abs(dot(n, ldir)), 0.0, 1.0);
 		col = base * (0.45 + 0.65 * dif) + base * 0.18;

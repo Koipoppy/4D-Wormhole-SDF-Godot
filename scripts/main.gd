@@ -1,14 +1,15 @@
 extends Node
-## 四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 同空间零厚度喉口对 (v34)
+## 四维空间 SDF 引擎 + 虫洞 —— 度规实现 + 虫洞组件 (v35)
 ##
 ##  · 主虫洞 = Morris–Thorne 度规的超悬链面嵌入 (与 0.0.2 同一实现):
 ##        ρ = b₀·cosh(w/b₀) ,  ρ = |xyz|
 ##    两个宇宙 = 同一张弯曲流形的两端: B (w<0, 家·冷) / C (w>0, 远·暖)。
 ##    观察者生活在流形上 (位置每帧投影回曲面), 光线沿流形测地线传播。
-##  · 同空间虫洞对: 两个球口开在宇宙B 的火山式圆顶上, 按零厚度喉口 (薄壳等同)
-##    相连: 跨口时位置平移、方向按球面法向反射 (等距变换, 两侧图像严格衔接)。
-##    没有焊接面/管体, 渲染与主喉口同样干净。
-##  · 两个彩色球体 (红/青) = 4D 球 ∩ 流形, 标出两个口。
+##
+##  · 虫洞组件 (见下方 WORMHOLES 表): 指定 入口四维坐标 a、出口四维坐标 b、
+##    口半径 r、截面形状 shape (0=球口 / 1=圆盘口, 圆盘法向 n),
+##    引擎自动生成: 地板火山圆顶 + 口 + 光线/玩家的跨口过渡 + 彩色标记球。
+##    r <= 0 表示禁用该项。主虫洞 (B↔C) 由度规本身给出, 不是组件。
 ##
 ## 自动化截图:
 ##   godot --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-look=x,y,z,w]
@@ -16,15 +17,22 @@ extends Node
 
 const THROAT_R := 3.0   # Morris–Thorne 喉半径 b₀
 
-# ---- 同空间喉口对 (与 shaders/wormhole4d.gdshader 保持一致) ----
-const MA := Vector4(0.0,  20.10,  9.0,  -7.8)   # 口 A 中心 (火山顶)
-const MB := Vector4(0.0, -30.20,  9.0,  -9.0)   # 口 B 中心 (火山顶)
-const RM := 5.0                                  # 球口半径
-const HILL_H := 9.0                              # 火山圆顶高度
-const HILL_S := 7.0                              # 火山圆顶半径尺度
-const OBJ0_C := Vector4(0.0,  13.00,  2.50,  -6.5)   # 红球
-const OBJ1_C := Vector4(0.0, -23.00,  2.50,  -7.5)   # 青球
-const OBJ_R := 2.6
+# ======================= 虫洞组件表 (增删虫洞只改这里) =======================
+# 每项: a=入口四维坐标, b=出口四维坐标, r=口半径(<=0 禁用),
+#       shape=0 球口 / 1 圆盘口, n=圆盘法向(球口忽略)
+const WORMHOLES: Array = [
+	{
+		"a": Vector4(0.0,  20.10,  9.0,  -7.8),
+		"b": Vector4(0.0, -30.20,  9.0,  -9.0),
+		"r": 5.0,
+		"shape": 0,
+		"n": Vector4(0.0, 0.0, 1.0, 0.0),
+	},
+]
+const HILL_H := 9.0       # 口部火山圆顶高度
+const HILL_S := 7.0       # 火山圆顶半径尺度
+const MARKER_R := 2.6     # 标记球半径 (仅标记, 无碰撞)
+# ==============================================================================
 
 const MODE_NAMES := ["① 第一人称", "② 嵌入图 (w,ρ)"]
 
@@ -32,7 +40,7 @@ const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型
 鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
 你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
 · 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是宇宙 C (远·暖, w>0), 回头可返回宇宙 B (家, w<0)
-· 两侧各有一座火山式圆顶, 顶部球口 = 同空间虫洞对 (两个口都开在宇宙B 里):
+· 两侧火山式圆顶顶部的球口 = 同空间虫洞对 (虫洞组件, 两个口都在宇宙B 里):
   红球/青球标出两端; 从一个口飞进去, 立刻从另一个口出来
 · 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
 · 嵌入图 (V) 显示这条弯曲空间在 4D 欧氏空间中的等距嵌入 ρ = b₀·cosh(w/b₀)"""
@@ -105,7 +113,7 @@ func _ready() -> void:
 		ss = shot_ss
 	_apply_scale()
 	help_label.text = HELP_TEXT
-	toast.text = "点击窗口捕获鼠标 → 前方喉口通宇宙C; 两侧火山顶的球口 = 同空间虫洞对 (红球/青球标记两端)"
+	toast.text = "点击窗口捕获鼠标 → 前方喉口通宇宙C; 两侧火山顶的球口 = 同空间虫洞对 (红/青球标记)"
 
 
 func _parse_shot_args() -> void:
@@ -192,12 +200,20 @@ func surf_normal(p: Vector4) -> Vector4:
 	return surf_grad(p).normalized()
 
 
-# ---- 地板: 悬链面 θ=π/2 截面 + 火山圆顶高度场 ----
+# ---- 虫洞组件: 火山圆顶 + 跨口过渡 ----
+
+func mouth_hill(p: Vector4, m: Vector4) -> float:
+	var d := Vector3(p.x - m.x, p.y - m.y, p.w - m.w).length()
+	return exp(-pow(d / HILL_S, 2.0))
+
 
 func hill(p: Vector4) -> float:
-	var dA := Vector3(p.x - MA.x, p.y - MA.y, p.w - MA.w).length()
-	var dB := Vector3(p.x - MB.x, p.y - MB.y, p.w - MB.w).length()
-	return HILL_H * (exp(-pow(dA / HILL_S, 2.0)) + exp(-pow(dB / HILL_S, 2.0)))
+	var h := 0.0
+	for wh in WORMHOLES:
+		if float(wh["r"]) <= 0.0:
+			continue
+		h += mouth_hill(p, wh["a"]) + mouth_hill(p, wh["b"])
+	return HILL_H * h
 
 
 func cat_sdf(p: Vector4) -> float:
@@ -217,44 +233,61 @@ func cat_normal(p: Vector4) -> Vector4:
 	).normalized()
 
 
-# ---- 同空间零厚度喉口: 段与球口相交 → 平移映射 + 球面法向反射 ----
-
-func _ball_hit(prev: Vector4, now: Vector4, m: Vector4) -> float:
+## 组件接口: 检查并执行跨口过渡 (球口 / 圆盘口)
+## 返回 true 表示本帧发生了穿越 (pos/vel 已更新)
+func wh_transfer(prev: Vector4, now: Vector4, m1: Vector4, m2: Vector4, r: float, shape: int, nrm: Vector4) -> bool:
+	if r <= 0.0:
+		return false
 	var d := now - prev
 	var a := d.dot(d)
 	if a < 1e-12:
-		return -1.0
-	var f := prev - m
-	var b := 2.0 * f.dot(d)
-	var c := f.dot(f) - RM * RM
-	var disc := b * b - 4.0 * a * c
-	if disc < 0.0:
-		return -1.0
-	var t := (-b - sqrt(disc)) / (2.0 * a)
-	if t < 0.0 or t > 1.0:
-		return -1.0
-	return t
-
-
-func _transport(t: float, prev: Vector4, m1: Vector4, m2: Vector4) -> void:
-	var d := pos - prev
+		return false
+	if shape == 0:
+		# ---- 球口: 段与球面相交 → 位置平移 + 方向按球面法向反射 ----
+		var f := prev - m1
+		var b := 2.0 * f.dot(d)
+		var c := f.dot(f) - r * r
+		var disc := b * b - 4.0 * a * c
+		if disc < 0.0:
+			return false
+		var t := (-b - sqrt(disc)) / (2.0 * a)
+		if t < 0.0 or t > 1.0:
+			return false
+		var hitp := prev + d * t
+		var nrm_s := (hitp - m1) / r
+		var vlen := vel.length()
+		var dir := (vel - nrm_s * (2.0 * vel.dot(nrm_s))).normalized()
+		pos = m2 + (hitp - m1) + dir * (d.length() * (1.0 - t))
+		vel = dir * vlen
+		_flash("穿过同空间虫洞 → 另一个火山口")
+		return true
+	# ---- 圆盘口: 段与盘面相交且在盘半径内 → 位置平移, 方向不变 ----
+	var s0 := (prev - m1).dot(nrm)
+	var s1 := (now - m1).dot(nrm)
+	if s0 * s1 >= 0.0:
+		return false
+	var t := s0 / (s0 - s1)
 	var hitp := prev + d * t
-	var nrm := (hitp - m1) / RM
-	var vlen := vel.length()
-	var dir := (vel - nrm * (2.0 * vel.dot(nrm))).normalized()
-	pos = m2 + (hitp - m1) + dir * (d.length() * (1.0 - t))
-	vel = dir * vlen
+	if (hitp - m1).length() > r:
+		return false
+	pos = m2 + (hitp - m1) + d * (1.0 - t)
 	_flash("穿过同空间虫洞 → 另一个火山口")
+	return true
 
 
-func _mouth_cross(prev: Vector4) -> void:
-	var t := _ball_hit(prev, pos, MA)
-	if t >= 0.0:
-		_transport(t, prev, MA, MB)
-		return
-	t = _ball_hit(prev, pos, MB)
-	if t >= 0.0:
-		_transport(t, prev, MB, MA)
+func _wh_cross(prev: Vector4) -> void:
+	for wh in WORMHOLES:
+		var r: float = wh["r"]
+		if r <= 0.0:
+			continue
+		var a: Vector4 = wh["a"]
+		var b: Vector4 = wh["b"]
+		var shape: int = wh["shape"]
+		var n: Vector4 = wh["n"]
+		if wh_transfer(prev, pos, a, b, r, shape, n):
+			return
+		if wh_transfer(prev, pos, b, a, r, shape, n):
+			return
 
 
 # ---- 标架 ----
@@ -337,8 +370,8 @@ func _process(delta: float) -> void:
 	var prev := pos
 	pos += vel * delta
 
-	# ---- 同空间球口穿越 (等距映射) ----
-	_mouth_cross(prev)
+	# ---- 虫洞组件: 跨口过渡 ----
+	_wh_cross(prev)
 
 	# ---- 地板碰撞: 悬链面地板 + 火山坡之上 ----
 	var dcat := cat_sdf(pos)
@@ -348,12 +381,6 @@ func _process(delta: float) -> void:
 		var vdown := vel.dot(-cn)
 		if vdown > 0.0:
 			vel += cn * vdown
-
-	# ---- 彩色球体碰撞 ----
-	for c in [[OBJ0_C, OBJ_R], [OBJ1_C, OBJ_R]]:
-		var dd: float = (pos - c[0]).length()
-		if dd < c[1] + 0.4 and dd > 0.0001:
-			pos += (pos - c[0]) / dd * (c[1] + 0.4 - dd)
 
 	pos = surf_project(pos)
 	_make_ortho()
