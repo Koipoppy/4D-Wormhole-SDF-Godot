@@ -1,227 +1,329 @@
 // ============================================================================
-//  v45 光滑双喉口：两个 Morris–Thorne 超悬链面喉口，共享 B/C 宇宙对
-//    每个喉口:  rho_i = R*cosh(w/R)  around C_i (i=1,2)
-//    世界 = smin(F1,F2) = 0，smin 是 C∞ 光滑最小值；不是 min 硬并集。
-//    喉口附近权重饱和 -> 精确 Ellis；重叠区用宽度 κ 的光滑颈连接。
-//    玩家/光线在这张 C∞ 超曲面上的测地线连续前进: B -> 喉口1 -> C -> 喉口2 -> B.
-//    没有位置映射/反射/传送，接缝处法向/切空间连续。
+//  四维空间 SDF 引擎 + 虫洞 —— 度规实现 (v19)
+//
+//  数学模型 (来自三个参考链接的真实实现):
+//
+//  · 虫洞空间 = Morris–Thorne 零潮汐力度规
+//        ds² = dl² + (l² + b₀²)·dΩ²
+//    代入 l = b₀·sinh(u) 化为 b₀²cosh²u·(du² + dΩ²), 它有 **4D 欧氏空间中的
+//    精确等距嵌入**:
+//        P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) ),   n̂ ∈ S² ⊂ ℝ³
+//    即超曲面  ρ = b₀·cosh(w/b₀)  (ρ = |xyz|, 把悬链线绕 w 轴旋转)。
+//    喉口 = w=0 处半径 b₀ 的球; u→±∞ 两侧 = 两个渐近平直宇宙。
+//    这个超曲面就是"弯曲的三维空间"本身 —— 4D SDF 引擎的舞台。
+//
+//  · 观察者是生活在该超曲面上的三维生物: 位置始终被投影回超曲面,
+//    视线/移动都在切向 3-空间内。
+//  · 光线 = 超曲面上的 **测地线** (约束积分器: 直线步进 → 投影回曲面 →
+//    速度重新切向化)。光线弯曲来自度规本身 —— 真实的引力透镜效果:
+//    喉口附近的星光多重像、爱因斯坦环, 全部是方程的涌现。
+//  · 场景: 悬链面地板 (θ=π/2 截面, 即 Wikipedia 的嵌入图曲面,
+//    棋盘材质) + 两侧宇宙的星空 (A 冷色 / B 暖色, 由逃逸侧决定)。
+//    没有任何装饰几何。
+//
+//  视图 ② = (w, ρ) 平面的嵌入图 —— Wikipedia 里的 Flamm 型图。
 // ============================================================================
 
 shader_type canvas_item;
 render_mode unshaded;
 
-uniform vec4 cam_pos = vec4(0.0, -11.0, 4.6, -6.0);
-uniform vec4 cam_fwd = vec4(0.0, 1.0, 0.0, 0.0);
-uniform vec4 cam_right = vec4(1.0, 0.0, 0.0, 0.0);
-uniform vec4 cam_up = vec4(0.0, 0.0, 1.0, 0.0);
+uniform vec4 cam_pos = vec4(30.16, 0.0, 1.6, 9.0);   // 在超曲面上 (每帧投影保证)
+uniform vec4 cam_fwd = vec4(-1.0, 0.0, 0.0, 0.0);    // 切向
+uniform vec4 cam_right = vec4(0.0, 0.0, 1.0, 0.0);   // 切向
+uniform vec4 cam_up = vec4(0.0, 1.0, 0.0, 0.0);      // 切向
 uniform float fov_scale = 1.0;
 uniform float aspect = 1.7778;
 uniform float time_s = 0.0;
-uniform float view_mode = 0.0;
-uniform float throat_r = 3.0;
-uniform float blend_k = 0.35;   // C∞ 光滑混合宽度 κ
-uniform vec3 c1;
-uniform vec3 c2;
-uniform vec3 green_c;
-uniform float green_r;
-uniform vec3 mk1_c;
-uniform vec3 mk2_c;
-uniform float mk1_r;
-uniform float mk2_r;
+uniform float view_mode = 0.0;     // 0 第一人称 | 1 嵌入图 (w, ρ)
+uniform float throat_r = 3.0;      // Morris–Thorne 喉半径 b₀
+
+// v52: same-universe A/B mouth pair (both in universe B, w=+6).
+uniform vec4 wh_a = vec4(0.0, -10.606, 3.86, 6.0);
+uniform vec4 wh_b = vec4(0.0, 10.606, 3.86, 6.0);
+uniform float wh_r = 2.5;
 
 const int MAX_STEPS = 1200;
 const float W_ESCAPE = 55.0;
 
-// ----------------------------------------------------------------------------
-//  0.0.2 hyper-catenoid (two copies)
-// ----------------------------------------------------------------------------
-float f1(vec4 p){
-	return length(p.xyz - c1) - throat_r * cosh(p.w / throat_r);
+// ============================================================================
+//  超曲面 ρ = b₀·cosh(w/b₀)   (Ellis 虫洞的等距嵌入)
+// ============================================================================
+
+float surf_f(vec4 p){
+	return length(p.xyz) - throat_r * cosh(p.w / throat_r);
 }
-float f2(vec4 p){
-	return length(p.xyz - c2) - throat_r * cosh(p.w / throat_r);
+
+vec4 surf_grad(vec4 p){
+	float rho = length(p.xyz);
+	vec3 g3 = (rho > 0.0001) ? p.xyz / rho : vec3(0.0);
+	return vec4(g3, -sinh(p.w / throat_r));
 }
-vec4 g1(vec4 p){
-	vec3 v = normalize(p.xyz - c1);
-	return vec4(v, -sinh(p.w / throat_r));
-}
-vec4 g2(vec4 p){
-	vec3 v = normalize(p.xyz - c2);
-	return vec4(v, -sinh(p.w / throat_r));
-}
-// ---- C∞ 光滑最小值 smin(F1,F2) ----
-// smin(a,b;κ) = min(a,b) - κ log(1 + exp(-|a-b|/κ))
-// 喉口附近一项权重饱和 -> 精确 Ellis；重叠区用宽度 κ 的光滑颈连接。
-float sigmoid_k(float x){
-	return 1.0 / (1.0 + exp(clamp(x, -60.0, 60.0)));
-}
-float smin(float a, float b){
-	float m = min(a, b);
-	float d = abs(a - b);
-	return m - blend_k * log(1.0 + exp(-d / blend_k));
-}
-vec4 smin_grad(vec4 p){
-	float a = f1(p);
-	float b = f2(p);
-	// wa = 1/(1+exp((a-b)/κ))：a<b 时 wa≈1，a>b 时 wa≈0
-	float wa = sigmoid_k((a - b) / blend_k);
-	return wa * g1(p) + (1.0 - wa) * g2(p);
-}
-float world_f(vec4 p){ return smin(f1(p), f2(p)); }
-vec4 world_grad(vec4 p){ return smin_grad(p); }
-vec4 world_project(vec4 p){
-	for (int i = 0; i < 4; i++){
-		vec4 g = world_grad(p);
-		p -= g * world_f(p) / max(dot(g, g), 1e-6);
+
+vec4 surf_project(vec4 p){
+	for (int i = 0; i < 3; i++){
+		vec4 g = surf_grad(p);
+		float f = length(p.xyz) - throat_r * cosh(p.w / throat_r);
+		p -= g * f / max(dot(g, g), 1e-6);
 	}
 	return p;
 }
-vec4 world_normal(vec4 p){ return normalize(world_grad(p)); }
 
-// floor: z=0 cross-section, only on B side (w<0)
-float cat_i(vec4 p, vec3 c){
-	float rho_xy = length(p.xy - c.xy);
+vec4 surf_normal(vec4 p){
+	return normalize(surf_grad(p));
+}
+
+// ============================================================================
+//  悬链面地板 (θ=π/2 截面): Z=0, ρxy = b₀·cosh(w/b₀)
+// ============================================================================
+
+float cat_sdf(vec4 p){
+	float rho_xy = length(p.xy);
 	float dr = rho_xy - throat_r * cosh(p.w / throat_r);
 	return sign(p.z) * sqrt(p.z * p.z + dr * dr);
 }
-float cat_sdf(vec4 p){
-	if (p.w > 0.0){ return 1e9; }
-	// 地板也用同一套光滑权重混合，避免接缝处地板法向跳变
-	float wa = sigmoid_k((f1(p) - f2(p)) / blend_k);
-	return wa * cat_i(p, c1) + (1.0 - wa) * cat_i(p, c2);
-}
+
 vec4 cat_normal(vec4 p){
 	float e = 0.01;
 	return normalize(vec4(
-		cat_sdf(p + vec4(e,0,0,0)) - cat_sdf(p - vec4(e,0,0,0)),
-		cat_sdf(p + vec4(0,e,0,0)) - cat_sdf(p - vec4(0,e,0,0)),
-		cat_sdf(p + vec4(0,0,e,0)) - cat_sdf(p - vec4(0,0,e,0)),
-		cat_sdf(p + vec4(0,0,0,e)) - cat_sdf(p - vec4(0,0,0,e))));
+		cat_sdf(p + vec4(e, 0.0, 0.0, 0.0)) - cat_sdf(p - vec4(e, 0.0, 0.0, 0.0)),
+		cat_sdf(p + vec4(0.0, e, 0.0, 0.0)) - cat_sdf(p - vec4(0.0, e, 0.0, 0.0)),
+		cat_sdf(p + vec4(0.0, 0.0, e, 0.0)) - cat_sdf(p - vec4(0.0, 0.0, e, 0.0)),
+		cat_sdf(p + vec4(0.0, 0.0, 0.0, e)) - cat_sdf(p - vec4(0.0, 0.0, 0.0, e))));
 }
 
-// ----------------------------------------------------------------------------
-//  sky / floor / glass
-// ----------------------------------------------------------------------------
-float hash13(vec3 p){
+// 悬链面地板棋盘 (解析抗锯齿; 强畸变处导数可能爆炸, 做 NaN/INF 防护)
+vec3 cat_albedo(vec4 p){
+	vec3 coord = vec3(p.x, p.y, p.w) * 0.55;
+	float ck = mod(floor(coord.x) + floor(coord.y) + floor(coord.z), 2.0);
+	float fw = fwidth(coord.x) + fwidth(coord.y) + fwidth(coord.z);
+	if (isnan(fw) || isinf(fw) || fw < 0.0){
+		fw = 1.0;
+	}
+	ck = mix(ck, 0.5, clamp(fw * 1.5, 0.0, 1.0));
+	return mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+}
+
+// ============================================================================
+//  星空 (两个宇宙不同色温)
+// ============================================================================
+
+float hash14(vec4 p){
 	p = fract(p * 0.1031);
-	p += dot(p, p.zyx + 31.32);
+	p += dot(p, p.wzxy + vec4(33.33));
 	return fract((p.x + p.y) * p.z);
 }
-float vnoise(vec3 p){
-	vec3 i = floor(p); vec3 f = fract(p); f = f*f*(3.0-2.0*f);
-	return mix(
-		mix(mix(hash13(i), hash13(i+vec3(1,0,0)), f.x), mix(hash13(i+vec3(0,1,0)), hash13(i+vec3(1,1,0)), f.x), f.y),
-		mix(mix(hash13(i+vec3(0,0,1)), hash13(i+vec3(1,0,1)), f.x), mix(hash13(i+vec3(0,1,1)), hash13(i+vec3(1,1,1)), f.x), f.y),
-		f.z);
-}
-float fbm3(vec3 p){
-	float s = 0.0; float a = 0.5;
-	for (int i = 0; i < 5; i++){ s += a * vnoise(p); p *= 2.03; a *= 0.5; }
-	return s;
-}
-vec3 cloud_sky(vec4 v){
-	vec3 d = normalize(vec3(v.x, v.y, abs(v.z)*0.55 + 0.45));
-	float h = clamp(d.z*0.5+0.5, 0.0, 1.0);
-	vec3 sky = mix(vec3(0.52,0.74,0.97), vec3(0.07,0.30,0.78), h);
-	float n = fbm3(d*3.6 + vec3(time_s*0.008, time_s*0.004, 0.0));
-	float cl = smoothstep(0.50,0.74,n);
-	sky = mix(sky, vec3(1.0), cl*0.90);
-	float sun = pow(max(dot(d, normalize(vec3(0.42,0.28,0.86))),0.0),110.0);
-	sky += vec3(1.0,0.94,0.78)*sun*1.1;
-	return sky;
-}
-vec4 sun_dir(){ return normalize(vec4(0.42,0.28,0.86,0.0)); }
 
-vec3 floor_albedo(vec4 p){
-	// 纯棋盘, 不做任何 fwidth/抗锯齿混合: 喉口附近不会再出现灰色平均带。
-	// 用地面 (x,y) 坐标, 避免 w 在喉口处被压缩造成的摩尔纹环带。
-	float ck = mod(floor(p.x * 0.55) + floor(p.y * 0.55), 2.0);
-	return mix(vec3(0.58, 0.59, 0.61), vec3(0.90, 0.91, 0.92), ck);
-}
-
-// ----------------------------------------------------------------------------
-//  renderer: 0.0.2 geodesic constraint marcher on the union, plus scene props
-// ----------------------------------------------------------------------------
-vec3 embed_diagram(vec2 uv){
-	float W = mix(-18.0, 18.0, uv.x);
-	float R = mix(26.0, 0.0, uv.y);
-	float curve = throat_r * cosh(W / throat_r);
-	vec3 col = vec3(0.012,0.015,0.028);
-	vec2 g = abs(fract(vec2(uv.x*16.0, uv.y*11.0))-0.5);
-	col += vec3(0.05,0.07,0.10)*(1.0-smoothstep(0.0,0.06,min(g.x,g.y)));
-	col = mix(col, vec3(0.95,0.85,0.45), (1.0-smoothstep(0.0,0.35,abs(R-curve)))*0.95);
-	col *= 1.0 - 0.35*dot(uv-0.5,uv-0.5)*2.0;
+vec3 star_layer(vec4 rd, float scale, float thr, float amp, float uni){
+	vec4 g = rd * scale;
+	vec4 id = floor(g);
+	vec4 f = fract(g) - 0.5;
+	float h = hash14(id + 0.5);
+	vec3 col = vec3(0.0);
+	if (h > thr){
+		float k = (h - thr) / (1.0 - thr);
+		float b = (1.0 - smoothstep(0.0, 0.4, length(f))) * (0.3 + 0.7 * k);
+		b *= 0.65 + 0.35 * sin(time_s * (1.0 + k * 6.0) + h * 613.0);
+		vec3 tint = mix(vec3(1.0, 0.82, 0.62), vec3(0.65, 0.78, 1.0), fract(h * 37.0));
+		tint = mix(tint, tint.zyx, uni * 0.55);
+		col = tint * b * amp * 1.7;
+	}
 	return col;
 }
 
+// 逃逸方向 → 所属宇宙 (w<0 冷色 / w>0 暖色) 的星空
+vec3 sky_col(vec4 v){
+	float uni = smoothstep(-3.0, 3.0, v.w * 6.0);
+	vec3 col = mix(vec3(0.008, 0.010, 0.026), vec3(0.026, 0.012, 0.008), uni);
+	col += star_layer(v, 15.0, 0.980, 1.0, uni);
+	col += star_layer(v, 28.0, 0.970, 0.65, uni);
+	col += star_layer(v, 52.0, 0.958, 0.45, uni);
+	return col;
+}
+
+// 平行光方向 (缓慢的 4D 黄道)
+vec4 sun_dir(float t){
+	return normalize(vec4(0.35 + 0.2 * sin(t * 0.05), 0.25, 0.6, 0.25 * sin(t * 0.03)));
+}
+
+// ============================================================================
+//  诊断视图 ②: (w, ρ) 嵌入图 (Wikipedia 的 Flamm 型图)
+// ============================================================================
+
+vec3 embed_diagram(vec2 uv){
+	float W = mix(-32.0, 32.0, uv.x);
+	float R = mix(44.0, 0.0, uv.y);
+	float curve = throat_r * cosh(W / throat_r);
+	vec3 col = vec3(0.012, 0.015, 0.028);
+	// 网格
+	vec2 g = abs(fract(vec2(uv.x * 16.0, uv.y * 11.0)) - 0.5);
+	col += vec3(0.05, 0.07, 0.10) * (1.0 - smoothstep(0.0, 0.06, min(g.x, g.y)));
+	// 超曲面: ρ = b₀cosh(w/b₀) (嵌入图曲线)
+	float dc = abs(R - curve);
+	col = mix(col, vec3(0.95, 0.85, 0.45), (1.0 - smoothstep(0.0, 0.35, dc)) * 0.95);
+	// 相机位置标记
+	float dc_cam = length(vec2(W - cam_pos.w, R - length(cam_pos.xyz)));
+	col = mix(col, vec3(0.3, 0.9, 0.5), (1.0 - smoothstep(0.0, 0.8, dc_cam)) * 0.9);
+	// 喉口标记 (w=0, ρ=b₀)
+	float dth = length(vec2(W, R - throat_r));
+	col = mix(col, vec3(0.4, 0.75, 1.0), (1.0 - smoothstep(0.0, 0.5, dth)) * 0.8);
+	// v52 同空间口 A/B 标记 (w=+6, ρ=11.5)
+	float dma = length(vec2(W - wh_a.w, R - length(wh_a.xyz)));
+	col = mix(col, vec3(0.20, 0.85, 1.0), (1.0 - smoothstep(0.0, 0.55, dma)) * 0.85);
+	float dmb = length(vec2(W - wh_b.w, R - length(wh_b.xyz)));
+	col = mix(col, vec3(1.00, 0.55, 0.15), (1.0 - smoothstep(0.0, 0.55, dmb)) * 0.85);
+	col *= 1.0 - 0.35 * dot(uv - 0.5, uv - 0.5) * 2.0;
+	return col;
+}
+
+// ============================================================================
+//  主渲染: 超曲面上的测地线光线步进
+// ============================================================================
+
 vec3 render_scene(vec2 uv){
-	vec2 ndc = vec2(uv.x*2.0-1.0, 1.0-uv.y*2.0);
+	vec2 ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
 	ndc.x *= aspect;
-	vec4 v = normalize(cam_fwd + (cam_right*ndc.x + cam_up*ndc.y)*fov_scale);
-	vec4 p = world_project(cam_pos);
+	vec4 v = normalize(cam_fwd + (cam_right * ndc.x + cam_up * ndc.y) * fov_scale);
+	vec4 p = cam_pos;
+
 	float travel = 0.0;
-	int hit = 0;   // 1 floor, 2 green, 3 mk1, 4 mk2, 5 rim
-	vec4 hit_n = vec4(0.0);
+	bool hit = false;
+	float rim = 0.0;
+	vec3 rim_col = vec3(0.0);
+	int portal_bounces = 0;
+
 	for (int i = 0; i < MAX_STEPS; i++){
-		float fl = cat_sdf(p);
-		float gr = length(p - vec4(green_c, p.w)) - green_r;
-		float m1 = length(p - vec4(mk1_c, p.w)) - mk1_r;
-		vec3 d2 = abs(p.xyz - mk2_c);
-		float m2 = max(max(d2.x,d2.y),d2.z) - mk2_r;
-		if (abs(fl) < 0.02){ hit=1; hit_n=cat_normal(p); break; }
-		if (gr < 0.02){ hit=2; hit_n=normalize(p-vec4(green_c,p.w)); break; }
-		if (m1 < 0.02){ hit=3; hit_n=normalize(p-vec4(mk1_c,p.w)); break; }
-		if (m2 < 0.02){ hit=4; hit_n=vec4(0.0); break; }
-		float h = clamp(0.5*min(min(abs(fl),gr),min(m1,m2))+0.04,0.05,0.7);
-		float near_throat = clamp(1.0 - length(p.xyz)/ (throat_r*6.0), 0.0, 1.0);
-		h *= 1.0 - 0.55*near_throat;
-		p += v*h;
-		p = world_project(p);
-		vec4 n = world_normal(p);
-		v -= n*dot(v,n);
+		float df = cat_sdf(p);
+		if (abs(df) < 0.02){
+			hit = true;
+			break;
+		}
+		// 自适应步长: 靠近地板更细; 靠近喉口也加密 (缠绕测地线的精度)
+		float h = clamp(0.5 * abs(df) + 0.04, 0.05, 0.7);
+		float near_throat = clamp(1.0 - length(p.xyz) / (throat_r * 6.0), 0.0, 1.0);
+		h *= 1.0 - 0.55 * near_throat;
+
+		// v52: slow down near the A/B mouths so the portal is not stepped over.
+		float near_mouth = min(length(p - wh_a), length(p - wh_b)) - wh_r;
+		if (near_mouth < 3.0){
+			h *= 0.55;
+		}
+
+		// ---- 测地线积分器 (约束投影法) ----
+		p += v * h;
+		p = surf_project(p);                 // 投影回超曲面
+		vec4 n = surf_normal(p);
+		v -= n * dot(v, n);                  // 速度重新切向化
 		v = normalize(v);
 		travel += h;
-		if (travel > 220.0){ break; }
-		if (abs(p.w) > W_ESCAPE){ break; }
-	}
-	if (hit == 0 && abs(cat_sdf(p)) < 1.2){ hit = 1; travel = max(travel, 200.0); }
-	vec3 col;
-	if (hit == 1){
-		vec3 n = vec3(0,0,1);
-		float dif = clamp(dot(n, sun_dir().xyz),0.0,1.0);
-		vec3 alb = floor_albedo(p);
-		float sg = smoothstep(4.4,1.8,length(p.xy-vec2(green_c.x,green_c.y)));
-		col = alb*(0.55+0.50*dif)*(1.0-0.38*sg);
-	} else if (hit == 2){
-		col = vec3(0.06,0.62,0.26)*(0.40+0.70*clamp(dot(hit_n.xyz,sun_dir().xyz),0.0,1.0));
-	} else if (hit == 3){
-		col = vec3(0.10,0.80,0.35)*(0.45+0.70*clamp(abs(dot(hit_n.xyz,sun_dir().xyz)),0.0,1.0));
-	} else if (hit == 4){
-		col = vec3(0.85,0.88,0.92)*(0.45+0.70*clamp(abs(dot(hit_n.xyz,sun_dir().xyz)),0.0,1.0));
-	} else {
-		// C side (w>0) is the shared sky; B side ambient is a dimmer sky
-		if (p.w > 0.0){
-			col = cloud_sky(v);
-		} else {
-			vec3 d = normalize(v.xyz);
-			float h = clamp(d.z*0.5+0.5,0.0,1.0);
-			col = mix(vec3(0.50,0.62,0.80), vec3(0.10,0.22,0.45), h);
+
+		// ---- v52: same-universe A/B mouth, both in universe B ----
+		float da = length(p - wh_a) - wh_r;
+		float db = length(p - wh_b) - wh_r;
+		if (min(da, db) < 0.02){
+			bool is_a = da < db;
+			vec4 c = is_a ? wh_a : wh_b;
+			vec4 d = is_a ? wh_b : wh_a;
+			vec4 rel = p - c;
+			float rl = length(rel);
+			if (rl > 0.00001){
+				vec4 unit = rel / rl;
+				vec4 entry = c + unit * wh_r;
+				vec4 Ns = surf_normal(entry);
+				vec4 m = unit - Ns * dot(unit, Ns);
+				if (length(m) < 0.00001){
+					m = unit;
+				}
+				m = normalize(m);
+				float facing = abs(dot(v, m));
+				vec3 mouth_col = is_a ? vec3(0.10, 0.82, 1.00) : vec3(1.00, 0.46, 0.10);
+				if (facing < 0.030){
+					rim = 1.0;
+					rim_col = mouth_col * (0.65 + 0.75 * (1.0 - facing / 0.030));
+					break;
+				}
+				vec4 q = surf_project(d + (entry - c));
+				vec4 Nq = surf_normal(q);
+				vec4 nq = q - d;
+				vec4 mq = nq - Nq * dot(nq, Nq);
+				if (length(mq) < 0.00001){
+					mq = nq;
+				}
+				mq = normalize(mq);
+				float dist = length(q - d);
+				if (dist < wh_r + 0.03){
+					q = surf_project(q + mq * (wh_r + 0.03 - dist + 0.01));
+				}
+				p = q;
+				v = normalize(reflect(v, mq));
+				portal_bounces++;
+				if (portal_bounces > 4){
+					break;
+				}
+				continue;
+			}
+		}
+
+		// 缠绕光线终止: 绕喉多圈后用逃逸方向采星空 (物理近似, 避免纯黑)
+		if (travel > 200.0){
+			break;
+		}
+
+		if (abs(p.w) > W_ESCAPE){
+			break;                            // 逃逸到宇宙深处 → 星空
 		}
 	}
-	col = col/(1.0+col);
+
+	// 步数耗尽的兜底:
+	// ① 仍贴近悬链面地板 → 按"无限远地板"处理 (浓雾色), 消除地平线锯齿
+	// ② 绕喉光线耗尽 → 用最终方向采星空 (缠绕的高阶像), 不再是纯黑
+	if (!hit && rim < 0.5){
+		float df_end = cat_sdf(p);
+		if (abs(df_end) < 1.2){
+			hit = true;
+			travel = max(travel, 180.0);
+		}
+	}
+
+	vec3 col;
+	if (rim > 0.5){
+		col = rim_col;
+	} else if (hit){
+		vec4 n = cat_normal(p);
+		vec4 ldir = sun_dir(time_s);
+		float dif = clamp(dot(n, ldir), 0.0, 1.0);
+		float amb = 0.30;
+		vec3 alb = cat_albedo(p);
+		col = alb * (amb * 0.85 + 0.78 * dif);
+		float uni = smoothstep(-3.0, 3.0, p.w * 2.0);
+		vec3 fogc = mix(vec3(0.045, 0.055, 0.095), vec3(0.085, 0.050, 0.038), uni);
+		float fog = 1.0 - exp(-0.010 * travel);
+		col = mix(col, fogc, clamp(fog, 0.0, 1.0));
+	} else {
+		col = sky_col(v);
+	}
+
+	// 色调映射 + gamma
+	col = col / (1.0 + col);
 	col = pow(col, vec3(0.6));
-	vec2 vq = uv-0.5;
-	col *= 1.0-0.45*dot(vq,vq);
-	vec2 cs = uv-0.5; cs.x *= aspect;
+
+	// 晕影 + 准星 (一个清晰的小点, 按纵横比校正)
+	vec2 vq = uv - 0.5;
+	col *= 1.0 - 0.5 * dot(vq, vq);
+	vec2 cs = uv - 0.5;
+	cs.x *= aspect;
 	float cdist = length(cs);
-	col = mix(col, vec3(0.0), (1.0-smoothstep(0.0036,0.0046,cdist))*0.45);
-	col = mix(col, vec3(1.0), 1.0-smoothstep(0.0022,0.0030,cdist));
+	col = mix(col, vec3(0.0), (1.0 - smoothstep(0.0036, 0.0046, cdist)) * 0.45);
+	col = mix(col, vec3(1.0), 1.0 - smoothstep(0.0022, 0.0030, cdist));
+
 	return col;
 }
 
 void fragment(){
 	vec3 col;
-	if (view_mode > 0.5){ col = embed_diagram(UV); }
-	else { col = render_scene(UV); }
+	if (view_mode > 0.5){
+		col = embed_diagram(UV);
+	} else {
+		col = render_scene(UV);
+	}
 	COLOR = vec4(col, 1.0);
 }

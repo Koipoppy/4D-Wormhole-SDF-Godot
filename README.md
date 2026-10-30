@@ -1,101 +1,136 @@
 # 四维空间 SDF 引擎 + 虫洞（Godot 4）
 
-当前主场景：**v45 光滑双喉口超悬链面**（`scenes/main.tscn` → `scripts/main.gd` +
-`shaders/wormhole4d.gdshader`）。
+当前主场景：**0.0.2 Ellis 底座 + 同空间双口传送**（`scenes/main.tscn` →
+`scripts/main.gd` + `shaders/wormhole4d.gdshader`）。
 
-> **状态说明**：v45 修掉了 v44 的 C⁰ 接缝（min 硬并集、法向跳变），
-> 但 B 侧仍然是两个超悬链面实体的**外包络/桥**，不是参考图的“平地板 + 两个分离球泡”。
-> 下一步是“平 B 房间 + 两个真实 4D 颈部 + 共享 C 超悬链面”，
-> 详见 [docs/REJECTED_METHODS.md](docs/REJECTED_METHODS.md)。
+> 底座是 0.0.2 的单超悬链面 `ρ = b₀·cosh(w/b₀)`：中央主喉口 B↔C 不变。
+> 在**同一个宇宙 B (w=+6)** 里加了两个球形口 A/B：进入任一口 = 经喉（传送）
+> 从另一口外侧出来；再沿宇宙 B 飞回入口，形成
+> “口1 → 喉(传送) → 口2 → 宇宙B → 口1”。传送是用户明确要求的机制；
+> 主喉口 `w=0` 仍是度规本身，不是传送。
+> 旧 v51 平房间原型 `portal_room.*` 保留但不再是主场景。
 
-## 当前方法（v45）
+## 当前实现（v52）：0.0.2 Ellis + 同空间双口传送
 
-每张喉口仍是 0.0.2 的 Morris–Thorne 超悬链面：
+- **底座**：0.0.2 单超悬链面、悬链面地板、两个宇宙星空、V 嵌入图。
+- **两个口**：A(青) `(0, +10.606, 3.86, +6)`、B(橙) `(0, -10.606, 3.86, +6)`，
+  半径 `2.5`；都在宇宙 B，投影到同一张 Ellis 超曲面上。
+- **传送**：相机/光线进入 4D 口球时，映射到另一口的同一角向点，并把速度/
+  视线沿曲面切向的口法向反射；出口在另一口外侧。没有复用旧的 v36/v39
+  portal 代码，是在 0.0.2 的 `surf_*` 上新增的实现。
+- **闭环**：口A → 喉(传送) → 口B → 沿宇宙B飞回口A → 再次进入口A；HUD 计数。
+- **手性**：每次传送左右手翻转，HUD 显示 `手性 +/−`。
+- 截图：[build/v52_spawn.png](build/v52_spawn.png)、
+  [build/v52_insideA.png](build/v52_insideA.png)。
 
-```
-F_i(p) = |p_xyz - C_i| - R*cosh(w/R) = 0      (i=1,2)
-```
-
-世界不是 `min(F1,F2)` 硬并集，而是 C∞ 光滑最小值：
-
-```
-F(p) = smin(F1(p), F2(p); κ)
-smin(a,b;κ) = min(a,b) - κ * log(1 + exp(-|a-b|/κ))
-```
-
-- 喉口附近一项权重饱和 → 精确的 Ellis 超悬链面；
-- 两份重叠区用宽度 `κ` 的光滑颈连接，法向/切空间连续；
-- 玩家/光线在这张 C∞ 超曲面上做约束投影测地线积分；
-- 两个喉口在 `w=0` 是半径 `R=3` 的球面；`B` 侧 (w<0) 有地板，`C` 侧 (w>0) 是天空；
-- 全程没有位置映射/反射/传送。
-
-参数：`R=3`，`κ=0.35`，`C1=(-5,9.24,0)`，`C2=(5,9.24,0)`，`W0=-6`。
-
-## 数学
-
-三维空间度规（Ellis 虫洞）：
+自检：
 
 ```
-ds² = dl² + (l² + R²) dΩ²
-l = R*sinh(w/R)
-ρ = |xyz| = R*cosh(w/R)
+Godot.exe --headless --path . --script res://tests/portal_throat_test.gd
+Godot.exe --headless --path . --script res://tests/throat_test.gd
 ```
 
-这是 `R⁴` 中的精确等距嵌入；观察者和光线都被约束在这张 3D 超曲面上。
-完整推导、曲率、测地线、临界碰撞参数、Gauss/Codazzi 几何见
-[docs/wormhole_geometry.md](docs/wormhole_geometry.md)。
+`tests/portal_throat_test.gd` 检查：A/B 在宇宙 B、在 0.0.2 曲面上、扫掠进入、
+出口在 B 外、速度向外、闭环计数、`w` 偏移掠过、绕行宇宙 B 不碰口。
+`tests/throat_test.gd` 保持 0.0.2 主喉口 8 项 PASS。
+
+## 历史实现（v50）：单一母线双叶曲面
+
+世界是**一张光滑 3D 旋转曲面**：
+
+```
+F(p) = |p_xyz| - f(p.w) = 0
+
+f(w) = R_L*exp(-((w-a)/s)^2) + R_L*exp(-((w+a)/s)^2)
+       + R_N*exp(-(w/sn)^2)
+```
+
+- 一条母线 \(ρ=f(w)\) 绕 \(w\) 轴旋转得到整张曲面；
+- 母线上有两个鼓包（叶瓣）和一个细颈；
+- 两个叶瓣是**同一张曲面**的两个位置；颈部是它们之间的连接；
+- 没有球、没有 tube、没有并集、没有 rim、没有平房间、没有单独的 handle；
+- 观察者/光线始终在这张曲面上：叶瓣 A → 颈部 → 叶瓣 B；没有位置映射/传送。
+
+参数：`R_L=2.6`，`R_N=1.1`，`a=2.0`，`s=1.0`，`sn=1.2`。
+颈部半径约 `1.19`，叶瓣半径约 `2.65`。
+
+## 两个视图
+
+- **第一人称**：站在叶瓣 A 的曲面上，沿同一张曲面穿过颈部到叶瓣 B。
+- **V 母线图**：直接画 \(ρ=f(w)\) 的截面——两个叶瓣、颈部、相机位置（绿点）、颈部（蓝点）。
+
+截图：
+
+- [build/v50_diagram.png](build/v50_diagram.png)：V 母线图，双叶 + 颈部；
+- [build/v50_fp.png](build/v50_fp.png)：第一人称曲面/隧道视图。
 
 ## 自检
 
 ```
-Godot.exe --headless --path . --script res://tests/catenoid_test.gd
+Godot.exe --headless --path . --script res://tests/handle_test.gd
 ```
 
-v45 自检覆盖：
-- 两个喉口 `F1/F2≈0`，且光滑世界 `F(喉口)≈0`；
-- B 地板存在、C 侧无地板；
-- 接缝法向连续（约 0.15°；v44 是 13.5°）；
-- 相切点法向连续（约 1.6°；v44 是 73.8°）；
-- 跨接缝速度连续（约 0.38°）；
-- `world_f(world_project(p))≈0`（残差 ~1e-7）；
-- 121 采样世界线 `A→C→B` 的 `w` 连续，法向连续。
+`tests/handle_test.gd`（10 项 PASS）覆盖：
 
-当前渲染截图：`build/v45_test.png`（B 侧深景，可见外包络桥）、
-`build/v45_close.png`（近景，桥更明显）。
+- 路径上 `F=0`；
+- 起点在叶瓣 A（`w<0`）、终点在叶瓣 B（`w>0`）；
+- 路径穿过颈部 `w=0`；
+- 颈部半径小于两个叶瓣；
+- 两个叶瓣半径相同（同一张曲面）；
+- `w` 连续、4D 位置连续；
+- 起点/终点/颈部都满足 `F=0`，没有第二份拷贝。
 
-## 已知问题 / 下一步
+`tests/throat_test.gd`（0.0.2 单喉口 B↔A）8 项 PASS，仍可用。
 
-- **v44/v45 的 B 侧外包络/桥**：世界是两份超悬链面实体的外包络，不是“房间 + 两个独立口”；
-  相机在两口正前方时必然落在桥上。已写入 `docs/REJECTED_METHODS.md` §8。
-- **下一步（正确方向）**：平 B 房间 + 两个真实 4D 颈部 + 共享 C 超悬链面；
-  颈部是空间的一部分，玩家连续穿过，不做位置映射。详见同文档“正确方向（下一步）”。
-- v39 球面薄壳映射、v40 体积手柄、v44 `min` 并集均已打回，只作为历史保留。
+## 为什么不是 v45–v49
 
-## 运行 / 构建
+- **v45 双超悬链面**：两张 B↔C 曲面，`A→C→B`。
+- **v46 体积手柄**：玩家在 tube 体积里。
+- **v47 平房间 + 外挂 tube 边界**：平房间，桥在曲面外侧。
+- **v48 0.0.2 B 面 + 内插 tube 边界**：B 面 + 管子，复合结构。
+- **v49 两个 4D 球的平滑并集**：仍是球/并集，第一人称会看到球面/边界；
+  你贴的图正是“蓝色球/管插进灰色曲面 + 硬 rim”的失败形态。
+- **v50**：没有球/管/并集/rim；整个空间就是一条光滑母线旋转出的曲面，
+  两个叶瓣 + 颈部是同一张曲面的连续形状。
 
-- Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）；`./build.sh "…Godot.exe"` 出单文件 exe。
-- 截图验证：
-  `Godot.exe --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-look=x,y,z,w] [--ss=1.5]`
+## 0.0.2 主 B↔C
 
-## 操作
+`scenes/main.tscn` 是 0.0.2 单超悬链面：一张曲面、一个主喉口、两侧 B/C 两个宇宙。
+v52 在同一张曲面的宇宙 B 里加了 A/B 两个同空间口（传送）；主喉口 `w=0` 仍通 C。
+v50 的同空间双叶曲面是另一张独立的（历史）曲面。
+
+## 运行 / 操作
+
+- Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）。
+- 主场景（0.0.2 + A/B 传送）截图：
+  `Godot.exe --path . -- --shot=<png> [--shot-mode=0|1] [--shot-pos=x,y,z,w] [--shot-look=x,y,z,w] [--ss=1.5]`
+- v51 平房间原型截图：
+  `Godot.exe --path . -- --shot=<png> [--shot-pos=x,y,z] [--shot-look=x,y,z] [--ss=1.5]`
 
 | 按键 | 作用 |
 |---|---|
-| 鼠标 / WASD / Space·C / 滚轮 | 切空间内转身 / 移动 / 升降 / 调速 |
+| 鼠标 / WASD / Space·C / 滚轮 | 转身 / 移动 / 升降 / 调速 |
 | Q / E | 翻滚 |
-| **V** | 视图：① 第一人称 ② 嵌入图 (w, ρ) |
 | **F** | 超采样 1.0× / 1.5× / 2.0× |
+| **V** | 主场景：第一人称 / 嵌入图 \(ρ=f(w)\)；图中标出 A/B 口 |
 
 ## 文件
 
 ```
-scenes/main.tscn            v45 主场景
-scripts/main.gd             光滑双喉口、约束相机、投影测地线、地板碰撞
-shaders/wormhole4d.gdshader 光滑 smin 世界、地板、天空、4D 标识、嵌入图
-tests/catenoid_test.gd      v45 自检：喉口、法向、速度、投影残差、世界线
-tests/portal_test.gd        v39 历史自检（球面薄壳映射，已打回）
-tests/volume_test.gd        v40 历史自检（体积手柄，已打回）
+scenes/main.tscn            当前主场景：0.0.2 Ellis + 同空间 A/B 传送
+scripts/main.gd             0.0.2 底座 + A/B 4D 传送/闭环/HUD
+shaders/wormhole4d.gdshader 0.0.2 超曲面 + A/B 递归传送视图
+tests/portal_throat_test.gd A/B 传送/闭环自检
+tests/throat_test.gd        0.0.2 单喉口 B↔A 连续性自检
+scenes/portal_room.tscn     v51 平房间传送原型（非主场景）
+scripts/portal_room.gd      v51 原型相机/传送/闭环
+scripts/portal_math.gd      v51 原型球口映射、扫掠、反射
+shaders/portal_room.gdshader v51 原型平直房间 + 传送视图
+tests/portal_room_test.gd   v51 原型自检
+scenes/handle.tscn          v50 单一母线双叶曲面（历史）
+scripts/handle_main.gd      母线 f(w)、约束相机/测地线、V 视图
+shaders/handle4d.gdshader   单一旋转曲面、第一人称、V 母线图
+tests/handle_test.gd        双叶 A→B 连续性自检
 docs/wormhole_geometry.md   主虫洞（Ellis）微分几何文档
-docs/REJECTED_METHODS.md    已打回方案 + 下一正确方向
-scenes/volume.tscn          v40 体积手柄实验（非主场景）
+docs/REJECTED_METHODS.md    已打回方案清单
 ```
