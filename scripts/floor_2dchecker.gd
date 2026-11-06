@@ -23,7 +23,7 @@ const THROAT_R := 3.0   # Morris–Thorne 喉半径 b₀
 const MODE_NAMES := ["① 第一人称", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型嵌入图 | F 超采样
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 菜单
+鼠标 转身 | WASD 移动 | Space/C 升降 | Shift+滚轮 调速 | Q/E 翻滚 | Esc 菜单
 你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
 · 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是另一个宇宙 (星空色温不同, 回头可返回)
 · 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
@@ -119,9 +119,9 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if not captured:
 			_set_captured(true)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.shift_pressed:
 			speed = minf(speed * 1.18, 80.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.shift_pressed:
 			speed = maxf(speed / 1.18, 1.0)
 	elif event is InputEventMouseMotion and captured:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转

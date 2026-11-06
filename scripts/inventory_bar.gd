@@ -1,72 +1,112 @@
 class_name InventoryBar
 extends Control
-## 画面底部中央的物品栏：一个虫洞枪槽位。
-## Portal 2 / Aperture 语言：暗色半透明面板、白色器械、蓝/橙两个发射口。
+## 底部中央的五格拨轮物品栏：透明背景，只有槽位与图标。
+## 滚轮 / 数字键 1-5 切换槽位；选中槽滑到中央，形成拨轮效果。
+## 虫洞枪占第 1 格，其余四格预留给后续物品。
 
 const BLUE := Color(0.35, 0.72, 0.93)
 const ORANGE := Color(0.97, 0.60, 0.20)
 const INK := Color(0.91, 0.94, 0.93)
-const MUTED := Color(0.55, 0.62, 0.64)
-const EDGE := Color(0.40, 0.46, 0.48, 0.9)
+const MUTED := Color(0.60, 0.67, 0.69)
+const SELECT := Color(0.87, 0.89, 0.88)
+
+const SLOT_COUNT := 5
+const GUN_SLOT := 2
+const STEP := 84.0
 
 var font: Font
+var _selected := GUN_SLOT
+var _offset := 0.0
+var _target := 0.0
+
+
+func _ready() -> void:
+	set_process(true)
+
+
+func _process(delta: float) -> void:
+	var target := (float(SLOT_COUNT - 1) * 0.5 - float(_selected)) * STEP
+	if absf(_offset - target) > 0.05:
+		_offset = lerpf(_offset, target, 1.0 - exp(-14.0 * delta))
+		queue_redraw()
+	elif _offset != target:
+		_offset = target
+		queue_redraw()
+
+
+func _input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed:
+		# Shift+滚轮 留给场景调速，普通滚轮切物品栏
+		if event.shift_pressed:
+			return
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_select((_selected - 1 + SLOT_COUNT) % SLOT_COUNT)
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_select((_selected + 1) % SLOT_COUNT)
+			get_viewport().set_input_as_handled()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode >= KEY_1 and event.keycode < KEY_1 + SLOT_COUNT:
+			_select(int(event.keycode - KEY_1))
+			get_viewport().set_input_as_handled()
+
+
+func _select(idx: int) -> void:
+	if idx == _selected:
+		return
+	_selected = idx
+	queue_redraw()
 
 
 func _draw() -> void:
-	var f := font if font != null else ThemeDB.fallback_font
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0.012, 0.018, 0.022, 0.80))
-	draw_rect(Rect2(Vector2.ZERO, size), EDGE, false, 1.0)
-	draw_rect(Rect2(0, 0, 3, size.y), BLUE)
+	var cx := size.x * 0.5
+	var cy := size.y * 0.5
+	var font := self.font if self.font != null else ThemeDB.fallback_font
 
-	var sx := 12.0
-	var sy := 10.0
-	var slot := Rect2(sx, sy, 72, 72)
-	draw_rect(slot, Color(0.03, 0.045, 0.05, 0.92))
-	draw_rect(slot, Color(0.45, 0.55, 0.58, 0.85), false, 1.0)
-	# 选中/就绪角标
-	draw_line(Vector2(sx, sy), Vector2(sx + 12, sy), BLUE, 2.0)
-	draw_line(Vector2(sx, sy), Vector2(sx, sy + 12), BLUE, 2.0)
-	draw_string(f, Vector2(sx + 5, sy + 15), "1", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, MUTED)
+	# 先画未选中的槽，再画选中槽，保证选中槽压在最上层
+	for pass_i in 2:
+		for i in SLOT_COUNT:
+			var sel := i == _selected
+			if (pass_i == 0) == sel:
+				continue
+			var x := cx + (float(i) - (SLOT_COUNT - 1) * 0.5) * STEP + _offset
+			var sz := 78.0 if sel else 62.0
+			var rect := Rect2(x - sz * 0.5, cy - sz * 0.5, sz, sz)
+			if sel:
+				draw_rect(rect, Color(SELECT.r, SELECT.g, SELECT.b, 0.10))
+				draw_rect(rect, Color(SELECT.r, SELECT.g, SELECT.b, 0.95), false, 2.0)
+				draw_rect(Rect2(x - 20.0, rect.position.y - 4.0, 40.0, 2.0), BLUE)
+			else:
+				draw_rect(rect, Color(0.85, 0.88, 0.88, 0.58), false, 2.0)
 
-	_draw_gun(sx, sy)
-	draw_string(f, Vector2(sx + 5, sy + 66), "∞", HORIZONTAL_ALIGNMENT_LEFT, -1, 18, INK)
-
-	draw_string(f, Vector2(100, 38), "虫洞枪", HORIZONTAL_ALIGNMENT_LEFT, -1, 22, INK)
-	draw_string(f, Vector2(100, 54), "WORMHOLE GUN", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, MUTED)
-	draw_string(f, Vector2(100, 76), "READY", HORIZONTAL_ALIGNMENT_LEFT, -1, 12, BLUE)
-	draw_string(f, Vector2(size.x - 108, 54), "左键 发射", HORIZONTAL_ALIGNMENT_LEFT, -1, 11, MUTED)
+			if i == GUN_SLOT:
+				_draw_gun(Vector2(x, cy), sz / 72.0)
+			else:
+				draw_circle(Vector2(x, cy), 2.2, Color(0.85, 0.88, 0.88, 0.55))
 
 
-func _draw_gun(sx: float, sy: float) -> void:
+
+func _draw_gun(c: Vector2, s: float) -> void:
+	draw_set_transform(c - Vector2(36.0, 36.0) * s, 0.0, Vector2(s, s))
 	var body := Color(0.86, 0.90, 0.89)
 	var dark := Color(0.09, 0.11, 0.12)
 	var grey := Color(0.58, 0.64, 0.65)
 
-	# 白色主体
 	var body_pts := PackedVector2Array([
-		Vector2(sx + 9, sy + 27),
-		Vector2(sx + 41, sy + 23),
-		Vector2(sx + 47, sy + 30),
-		Vector2(sx + 41, sy + 37),
-		Vector2(sx + 9, sy + 36),
+		Vector2(9, 27), Vector2(41, 23), Vector2(47, 30),
+		Vector2(41, 37), Vector2(9, 36),
 	])
 	draw_colored_polygon(body_pts, body)
-	# 枪口
-	draw_rect(Rect2(sx + 46, sy + 25, 13, 10), grey)
-	draw_line(Vector2(sx + 59, sy + 25), Vector2(sx + 64, sy + 20), body, 2.0)
-	draw_line(Vector2(sx + 59, sy + 35), Vector2(sx + 64, sy + 40), body, 2.0)
-	# 黑色握把
+	draw_rect(Rect2(46, 25, 13, 10), grey)
+	draw_line(Vector2(59, 25), Vector2(64, 20), body, 2.0)
+	draw_line(Vector2(59, 35), Vector2(64, 40), body, 2.0)
 	var grip := PackedVector2Array([
-		Vector2(sx + 15, sy + 35),
-		Vector2(sx + 24, sy + 35),
-		Vector2(sx + 20, sy + 58),
-		Vector2(sx + 10, sy + 58),
+		Vector2(15, 35), Vector2(24, 35), Vector2(20, 58), Vector2(10, 58),
 	])
 	draw_colored_polygon(grip, dark)
-	# 黑色饰条
-	draw_rect(Rect2(sx + 22, sy + 28, 14, 3), dark)
-	# 蓝 / 橙发射口
-	draw_circle(Vector2(sx + 61, sy + 25), 2.6, BLUE)
-	draw_circle(Vector2(sx + 61, sy + 35), 2.6, ORANGE)
-	draw_circle(Vector2(sx + 61, sy + 25), 4.6, Color(BLUE.r, BLUE.g, BLUE.b, 0.18))
-	draw_circle(Vector2(sx + 61, sy + 35), 4.6, Color(ORANGE.r, ORANGE.g, ORANGE.b, 0.18))
+	draw_rect(Rect2(22, 28, 14, 3), dark)
+	draw_circle(Vector2(61, 25), 2.6, BLUE)
+	draw_circle(Vector2(61, 35), 2.6, ORANGE)
+	draw_circle(Vector2(61, 25), 4.6, Color(BLUE.r, BLUE.g, BLUE.b, 0.18))
+	draw_circle(Vector2(61, 35), 4.6, Color(ORANGE.r, ORANGE.g, ORANGE.b, 0.18))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)

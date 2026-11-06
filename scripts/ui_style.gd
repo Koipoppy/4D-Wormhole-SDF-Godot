@@ -71,14 +71,16 @@ static func apply_hud(root: Node) -> FourDAxis:
 		pos.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		pos.add_theme_constant_override("outline_size", 4)
 		pos.add_theme_stylebox_override("normal",
-			panel(Color(0.035, 0.045, 0.050, 0.70), EDGE, 1, false, 12, 5))
+			panel(Color(0.014, 0.019, 0.021, 0.74), EDGE, 1, false, 16, 5))
 		pos.modulate = Color.WHITE
+		pos.anchor_left = 0.0
+		pos.anchor_right = 1.0
 		pos.anchor_top = 1.0
 		pos.anchor_bottom = 1.0
-		pos.offset_left = 16.0
-		pos.offset_right = 1500.0
-		pos.offset_top = -170.0
-		pos.offset_bottom = -136.0
+		pos.offset_left = 0.0
+		pos.offset_right = 0.0
+		pos.offset_top = -38.0
+		pos.offset_bottom = 0.0
 
 	var help := ui.get_node_or_null("HelpLabel") as Label
 	if help != null:
@@ -107,8 +109,8 @@ static func apply_hud(root: Node) -> FourDAxis:
 		gizmo.anchor_bottom = 1.0
 		gizmo.offset_left = 16.0
 		gizmo.offset_right = 276.0
-		gizmo.offset_top = -404.0
-		gizmo.offset_bottom = -194.0
+		gizmo.offset_top = -256.0
+		gizmo.offset_bottom = -46.0
 		ui.add_child(gizmo)
 
 	# 底部中央物品栏（虫洞枪）
@@ -121,10 +123,11 @@ static func apply_hud(root: Node) -> FourDAxis:
 		inv.anchor_right = 0.5
 		inv.anchor_top = 1.0
 		inv.anchor_bottom = 1.0
-		inv.offset_left = -235.0
-		inv.offset_right = 235.0
-		inv.offset_top = -110.0
-		inv.offset_bottom = -18.0
+		inv.offset_left = -340.0
+		inv.offset_right = 340.0
+		inv.offset_top = -156.0
+		inv.offset_bottom = -46.0
+		inv.clip_contents = true
 		ui.add_child(inv)
 
 	return gizmo
