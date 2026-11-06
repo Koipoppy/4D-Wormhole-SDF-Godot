@@ -211,6 +211,16 @@ vec4 room_normal(vec4 p){
 	return vec4(0.0, 0.0, sign(p.z), 0.0);
 }
 
+// 命中前一点与立方体墙面的解析交点: 步进在 wd<0.02 停止,
+// 掠射墙面上这点提前量会放大成格纹采样的横向抖动 (密集圆纹)。
+vec3 room_face_hit(vec4 p0, vec4 v, vec4 n){
+	float t;
+	if (abs(n.x) > 0.5) t = (sign(n.x) * ROOM_L - p0.x) / (abs(v.x) > 1e-5 ? v.x : 1e-5);
+	else if (abs(n.y) > 0.5) t = (sign(n.y) * ROOM_L - p0.y) / (abs(v.y) > 1e-5 ? v.y : 1e-5);
+	else t = (sign(n.z) * ROOM_L - p0.z) / (abs(v.z) > 1e-5 ? v.z : 1e-5);
+	return p0.xyz + v.xyz * clamp(t, 0.0, 1.5);
+}
+
 // 蓝房间 w<0, 红房间 w>0; 棋盘/方格墙面。
 vec3 room_surface(vec4 p, vec4 n, vec3 ldir){
 	bool red = p.w > 0.0;
@@ -240,6 +250,7 @@ vec3 render_scene(vec2 uv){
 
 	float travel = 0.0;
 	bool hit = false;
+	vec4 p0 = p;
 
 	for (int i = 0; i < MAX_STEPS; i++){
 		float wd = room_dist(p);
@@ -248,6 +259,7 @@ vec3 render_scene(vec2 uv){
 			break;
 		}
 		float h = clamp(0.5 * wd + 0.02, 0.04, 0.6);
+		p0 = p;
 
 		// 约束测地线: 房间墙和中心喉口都在同一张 Ellis 超曲面上。
 		p += v * h;
@@ -265,8 +277,9 @@ vec3 render_scene(vec2 uv){
 	vec3 col;
 	if (hit){
 		vec4 n = room_normal(p);
+		vec3 sp = room_face_hit(p0, v, n);
 		vec3 ldir = normalize(sun_dir(time_s).xyz);
-		col = room_surface(p, n, ldir);
+		col = room_surface(vec4(sp, p.w), n, ldir);
 		// 距离雾已移除: 其等距线在平台上形成同心圆环
 	} else {
 		col = vec3(0.004, 0.004, 0.006);
