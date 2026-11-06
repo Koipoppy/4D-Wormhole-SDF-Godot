@@ -21,7 +21,7 @@ const SCENES := [
 	{
 		"tag": "03",
 		"title": "虫洞沙盒",
-		"desc": "动态 Ellis · 平台/柱子 · 左键创建/删除",
+		"desc": "虫洞枪 + 经典/三重/莫比乌斯传送门 · 平台/柱子",
 		"path": "res://scenes/wormhole_map.tscn",
 	},
 	{

@@ -39,7 +39,7 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 |---|---|---|
 | 01 双房间虫洞 | `scenes/main.tscn` | Ellis 超曲面 · 红/蓝立方体房间 · 中心喉口 |
 | 02 悬链面棋盘地板 | `scenes/floor_2dchecker.tscn` | 从 `4D-002-2dchecker` worktree 导入（tag 0.0.2 + 2D checker 改动）· 2D 棋盘地板 + 双宇宙星空 |
-| 03 虫洞沙盒 | `scenes/wormhole_map.tscn` | 平台/柱子沙盒 · 动态 Ellis 喉口 · 左键创建/删除 |
+| 03 虫洞沙盒 | `scenes/wormhole_map.tscn` | 平台/柱子沙盒 · 虫洞枪 + 经典/三重/莫比乌斯传送门 |
 | 04 动态 Ellis 虫洞 | `scenes/dynamic_ellis.tscn` | 入口移动 + 周期性隐去；隐去时入口完全消失、空间平直，房间颜色保留 |
 
 菜单里点击场景行或按 `1/2/3/4` 进入；游戏中按 `Esc`（或 `M`）打开 Portal 2 风格的暂停菜单，场景选择已合并其中。
@@ -78,6 +78,26 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
   每个面的 `(x,y,w)`）；格纹坐标取命中前一点与盒面的解析交点，掠射平台不会因步进
   量化出现同心条带。
 - 限制：`b₀=0` 是 GR pinch-off 极限，不是完整 4D Einstein 解；目前一次一个虫洞。
+
+## 传送门物品（03）
+
+参考 [optozorax/portal](https://github.com/optozorax/portal) 的 Portal Explorer：
+
+| 物品（数字键） | 放置 | 行为 |
+|---|---|---|
+| 1 经典双门 | 左键 A / 右键 B | A、B 互通，射线与玩家原样穿越 |
+| 2 三重门 | 左键依次 A→B→C | A→B→C→A 循环；右键清空 |
+| 3 虫洞枪 | 左键 | 原来的动态 Ellis 虫洞 |
+| 4 莫比乌斯门 | 左键 A / 右键 B | 出门绕法线滚转 180°，玩家上下翻转 |
+| 5 预留 | — | 后续物品 |
+
+规则与限制：
+
+- 选中物品时清空上一件物品留下的门；选虫洞枪时删除 Ellis 虫洞，选传送门时删除虫洞。
+- 传送门只放在房间墙/平台表面；半径 1.25 m；射线最多连续穿 3 次。
+- 传送门只在 03 的平直沙盒中工作；01/02/04 选择这些物品会提示仅沙盒可用。
+- 已实现经典门、三重门、莫比乌斯门；monoportal、缩放门、portal-in-portal 尚未实现。
+- 玩家在门前约 1 m 内朝门移动即触发传送；出口在配对门前方 0.55 m。
 
 ## 动态 Ellis 虫洞（04）
 
@@ -160,6 +180,10 @@ icon.svg
 - `build/menu.png`：Portal 2 / Aperture 风格场景选择页，背景为 02 的悬链面地板 + 星空；
 - `build/pause_menu.png`：画面中央的半透明 Esc 暂停菜单（继续 / 场景选择 / 回主菜单 / 退出）；
 - `build/ui_map.png`：游戏内 HUD（左下 4D 坐标系 + 中央虫洞枪物品栏）；
+- `build/portal_demo.png`：经典双门（蓝/橙）与出口画面；
+- `build/portal_triple.png`：三重门（A→B→C→A）；
+- `build/portal_mobius.png`：莫比乌斯门（出口画面滚转 180°）；
+- `build/portal_hotbar.png`：五格物品栏中的经典门 / 三重门 / 虫洞枪 / 莫比乌斯门图标。
 - `build/check_main.png`：双房间场景，红房间中心蓝色喉口；
 - `build/check_floor.png`：4D-002 的 2D 棋盘悬链面地板；
 - `build/map_empty.png`：虫洞沙盒空地图（房间 + 平台 + 中央柱，2 m 三维格点）；

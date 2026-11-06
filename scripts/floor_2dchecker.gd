@@ -60,6 +60,7 @@ var frame_count := 0
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
 var four_axis: FourDAxis
+var inv: InventoryBar
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
@@ -67,6 +68,9 @@ var four_axis: FourDAxis
 
 func _ready() -> void:
 	four_axis = UIStyle.apply_hud(self)
+	inv = get_node_or_null("UILayer/InventoryBar") as InventoryBar
+	if inv != null:
+		inv.item_selected.connect(_on_inventory_item)
 	get_viewport().size_changed.connect(_restyle_hud)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
@@ -321,6 +325,12 @@ func _maybe_screenshot() -> void:
 		img.save_png(shot_path)
 		print("SHOT_SAVED ", shot_path)
 		get_tree().quit()
+
+
+func _on_inventory_item(idx: int) -> void:
+	if idx == 2:
+		return
+	_flash("传送门物品只在 03 虫洞沙盒中可用")
 
 
 func _flash(msg: String) -> void:
