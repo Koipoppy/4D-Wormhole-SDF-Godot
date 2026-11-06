@@ -33,7 +33,7 @@ const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 const MODE_NAMES := ["① 房间", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """虫洞沙盒 | 左键 创建/移动虫洞入口 | 右键/X 删除虫洞 | V 嵌入图 | F 超采样
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
+鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 菜单
 初始空间是平直的 (b₀=0)；左键在视线前方 8m 放置入口 C:
 · b₀ 长到 3，Ellis 喉口在 C 处出现；玩家沿同一张流形连续穿过到另一个房间
 · 再次左键移动入口；右键/X 删除后 b₀→0，空间恢复到平直
@@ -149,9 +149,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
 		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_set_captured(false)
-		elif event.keycode == KEY_V:
+		if event.keycode == KEY_V:
 			view_mode = (view_mode + 1) % 2
 		elif event.keycode == KEY_F:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)

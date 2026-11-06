@@ -1,8 +1,9 @@
 extends Control
 ## 场景选择页面：游戏启动后的入口。
 ##
-## Half-Life 2 风格：暗色半透明控制台面板、琥珀色强调、方角、加大的字号。
-## 场景列表在 SCENES 里维护；点击卡片或按 1/2/3/4 进入。
+## Portal 2 / Aperture 风格：黑底、白色 DIN 字、蓝色强调，
+## 选中行是浅灰亮条（很 Portal 2 的交互语言）。
+## 场景列表在 SCENES 里维护；点击行或按 1/2/3/4 进入。
 
 const SCENES := [
 	{
@@ -31,12 +32,13 @@ const SCENES := [
 	},
 ]
 
-const BG := Color(0.010, 0.013, 0.014)
+const BG := Color(0.008, 0.011, 0.012)
 const THROAT_R := 3.0
 
 var _shot_path := ""
 var _shot_frame := 24
 var _frame := 0
+var _cards: Array[Button] = []
 
 
 func _ready() -> void:
@@ -65,10 +67,10 @@ func _build() -> void:
 	row.add_child(col)
 
 	var kicker := Label.new()
-	kicker.text = "GODOT 4 · 4D SDF ENGINE   /   SECTOR 04"
+	kicker.text = "APERTURE SCIENCE   //   TEST TRACK 04"
 	kicker.add_theme_font_override("font", UIStyle.font())
 	kicker.add_theme_font_size_override("font_size", 18)
-	kicker.add_theme_color_override("font_color", UIStyle.AMBER)
+	kicker.add_theme_color_override("font_color", UIStyle.BLUE)
 	col.add_child(kicker)
 
 	var title := Label.new()
@@ -86,26 +88,31 @@ func _build() -> void:
 	col.add_child(sub)
 
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 32)
+	gap.custom_minimum_size = Vector2(0, 30)
 	col.add_child(gap)
 
 	var shelf := VBoxContainer.new()
-	shelf.add_theme_constant_override("separation", 11)
+	shelf.add_theme_constant_override("separation", 2)
 	col.add_child(shelf)
 
 	for data in SCENES:
-		shelf.add_child(_make_card(data))
+		var card := _make_card(data)
+		_cards.append(card)
+		shelf.add_child(card)
 
 	var flex := Control.new()
 	flex.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	col.add_child(flex)
 
 	var foot := Label.new()
-	foot.text = "点击场景进入   ·   数字键 1 / 2 / 3 / 4   ·   游戏中 M 或右上角按钮返回"
+	foot.text = "点击场景进入   ·   数字键 1 / 2 / 3 / 4   ·   游戏中 Esc 打开菜单"
 	foot.add_theme_font_override("font", UIStyle.font())
 	foot.add_theme_font_size_override("font_size", 17)
-	foot.add_theme_color_override("font_color", Color(0.44, 0.50, 0.52))
+	foot.add_theme_color_override("font_color", Color(0.42, 0.48, 0.50))
 	col.add_child(foot)
+
+	if not _cards.is_empty():
+		_select_card(_cards[0])
 
 	# 右侧留给 _draw() 的嵌入曲线
 	var art := Control.new()
@@ -117,50 +124,42 @@ func _build() -> void:
 func _make_card(data: Dictionary) -> Button:
 	var b := Button.new()
 	b.text = ""
-	b.custom_minimum_size = Vector2(780, 106)
+	b.custom_minimum_size = Vector2(780, 100)
 	b.focus_mode = Control.FOCUS_NONE
 	b.clip_contents = true
-	b.add_theme_stylebox_override("normal", _card_style(false))
-	b.add_theme_stylebox_override("hover", _card_style(true))
-	b.add_theme_stylebox_override("pressed", _card_style(true, true))
+	b.add_theme_stylebox_override("normal", UIStyle.row_style(false))
+	b.add_theme_stylebox_override("hover", UIStyle.row_style(true))
+	b.add_theme_stylebox_override("pressed", UIStyle.row_style(true))
 	b.pressed.connect(_open.bind(String(data.path)))
-
-	# HL2 面板左侧的琥珀色刻线
-	var bar := ColorRect.new()
-	bar.color = UIStyle.AMBER
-	bar.anchor_bottom = 1.0
-	bar.offset_right = 4.0
-	bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	b.add_child(bar)
 
 	var m := MarginContainer.new()
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	m.add_theme_constant_override("margin_left", 26)
+	m.add_theme_constant_override("margin_left", 22)
 	m.add_theme_constant_override("margin_right", 22)
-	m.add_theme_constant_override("margin_top", 12)
-	m.add_theme_constant_override("margin_bottom", 12)
+	m.add_theme_constant_override("margin_top", 10)
+	m.add_theme_constant_override("margin_bottom", 10)
 	b.add_child(m)
 
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 22)
+	h.add_theme_constant_override("separation", 24)
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(h)
 
 	var tag := Label.new()
 	tag.text = String(data.tag)
-	tag.custom_minimum_size = Vector2(56, 0)
+	tag.custom_minimum_size = Vector2(54, 0)
 	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	tag.add_theme_font_override("font", UIStyle.font())
 	tag.add_theme_font_size_override("font_size", 26)
-	tag.add_theme_color_override("font_color", UIStyle.AMBER)
+	tag.add_theme_color_override("font_color", UIStyle.BLUE)
 	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(tag)
 
 	var v := VBoxContainer.new()
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	v.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	v.add_theme_constant_override("separation", 2)
+	v.add_theme_constant_override("separation", 0)
 	v.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(v)
 
@@ -180,21 +179,27 @@ func _make_card(data: Dictionary) -> Button:
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(desc)
 
+	b.set_meta("tag_label", tag)
+	b.set_meta("title_label", title)
+	b.set_meta("desc_label", desc)
+	b.mouse_entered.connect(_select_card.bind(b))
 	return b
 
 
-func _card_style(hover: bool, pressed: bool = false) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	if pressed:
-		s.bg_color = Color(0.10, 0.085, 0.055, 0.96)
-	elif hover:
-		s.bg_color = Color(0.065, 0.070, 0.070, 0.94)
-	else:
-		s.bg_color = Color(0.022, 0.028, 0.030, 0.88)
-	s.border_color = UIStyle.AMBER_BRIGHT if (hover or pressed) else Color(0.24, 0.28, 0.29, 0.95)
-	s.set_border_width_all(2 if (hover or pressed) else 1)
-	s.set_corner_radius_all(0)
-	return s
+## Portal 2 的选中行：浅灰亮条 + 深色字。
+func _select_card(b: Button) -> void:
+	for c in _cards:
+		var on: bool = c == b
+		c.add_theme_stylebox_override("normal", UIStyle.row_style(on))
+		var tag: Label = c.get_meta("tag_label")
+		var title: Label = c.get_meta("title_label")
+		var desc: Label = c.get_meta("desc_label")
+		tag.add_theme_color_override("font_color",
+			UIStyle.SELECT_TEXT if on else UIStyle.BLUE)
+		title.add_theme_color_override("font_color",
+			UIStyle.SELECT_TEXT if on else UIStyle.INK)
+		desc.add_theme_color_override("font_color",
+			Color(0.24, 0.27, 0.28) if on else UIStyle.MUTED)
 
 
 func _open(path: String) -> void:
@@ -217,11 +222,11 @@ func _draw() -> void:
 	if size.x < 1100.0 or size.y < 560.0:
 		return
 
-	# 左侧控制台面板
+	# 左侧菜单区：极淡的暗面
 	var px0 := 56.0
 	var px1 := size.x * 0.565
-	draw_rect(Rect2(px0, 34.0, px1 - px0, size.y - 68.0), Color(0.014, 0.018, 0.019, 0.66))
-	draw_rect(Rect2(px1 - 2.0, 34.0, 2.0, size.y - 68.0), Color(0.92, 0.58, 0.18, 0.85))
+	draw_rect(Rect2(px0, 34.0, px1 - px0, size.y - 68.0), Color(0.020, 0.027, 0.030, 0.52))
+	draw_rect(Rect2(px1 - 1.0, 34.0, 1.0, size.y - 68.0), Color(0.32, 0.66, 0.84, 0.55))
 
 	var x0 := size.x * 0.62
 	var x1 := size.x * 0.955
@@ -230,7 +235,7 @@ func _draw() -> void:
 	var w_span := 12.0
 	var rho_max := 120.0
 
-	var grid := Color(0.42, 0.33, 0.20, 0.14)
+	var grid := Color(0.30, 0.40, 0.46, 0.14)
 	for i in range(-12, 13, 3):
 		var x := remap(float(i), -w_span, w_span, x0, x1)
 		draw_line(Vector2(x, y0), Vector2(x, y1), grid, 1.0)
@@ -238,7 +243,7 @@ func _draw() -> void:
 		var y := remap(float(r), 0.0, rho_max, y1, y0)
 		draw_line(Vector2(x0, y), Vector2(x1, y), grid, 1.0)
 
-	var axis := Color(0.55, 0.42, 0.24, 0.45)
+	var axis := Color(0.36, 0.48, 0.55, 0.45)
 	draw_line(Vector2(x0, y1), Vector2(x1, y1), axis, 1.0)
 	var xc := remap(0.0, -w_span, w_span, x0, x1)
 	draw_line(Vector2(xc, y0), Vector2(xc, y1), axis, 1.0)
@@ -254,25 +259,25 @@ func _draw() -> void:
 			remap(w, -w_span, w_span, x0, x1),
 			remap(rho, 0.0, rho_max, y1, y0)))
 	if pts.size() > 1:
-		draw_polyline(pts, Color(0.95, 0.60, 0.18, 0.05), 14.0, true)
-		draw_polyline(pts, Color(0.98, 0.66, 0.22, 0.11), 7.0, true)
-		draw_polyline(pts, Color(1.0, 0.76, 0.34, 0.92), 2.0, true)
+		draw_polyline(pts, Color(0.35, 0.72, 0.93, 0.05), 14.0, true)
+		draw_polyline(pts, Color(0.35, 0.72, 0.93, 0.12), 7.0, true)
+		draw_polyline(pts, Color(0.58, 0.85, 1.0, 0.90), 2.0, true)
 
 	var yt := remap(THROAT_R, 0.0, rho_max, y1, y0)
-	draw_circle(Vector2(xc, yt), 8.0, Color(1.0, 0.62, 0.20, 0.16))
-	draw_circle(Vector2(xc, yt), 3.5, Color(1.0, 0.78, 0.38, 0.95))
+	draw_circle(Vector2(xc, yt), 8.0, Color(0.97, 0.60, 0.20, 0.18))
+	draw_circle(Vector2(xc, yt), 3.5, Color(1.0, 0.70, 0.30, 0.95))
 
 	var font := UIStyle.font()
 	draw_string(font, Vector2(xc + 16.0, yt - 12.0), "喉口",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UIStyle.AMBER_BRIGHT)
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UIStyle.ORANGE)
 	draw_string(font, Vector2(x1 - 18.0, y1 - 12.0), "w",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, UIStyle.MUTED)
 	draw_string(font, Vector2(xc + 12.0, y0 + 18.0), "ρ",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, UIStyle.MUTED)
 	draw_string(font, Vector2(x0 + 8.0, y0 + 44.0), "ρ = b₀ · cosh(w / b₀)",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(1.0, 0.76, 0.34, 0.72))
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.58, 0.85, 1.0, 0.72))
 	draw_string(font, Vector2(x1 - 150.0, size.y - 46.0), "BUILD 0.0.4",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.36, 0.41, 0.42))
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.34, 0.40, 0.42))
 
 
 # ---- 截图自检: --shot=<png> [--shot-frame=N] ----

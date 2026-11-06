@@ -1,19 +1,23 @@
 class_name UIStyle
 extends RefCounted
-## Half-Life 2 风格 UI：暗色半透明面板、琥珀色强调、方角边框、放大的字形。
-## 供菜单、HUD、场景切换按钮共用。
+## Portal 2 / Aperture 风格 UI：
+## 暗色半透明面板、白色无衬线字、Aperture 蓝、选中行用浅灰亮条。
+## 供菜单、HUD、暂停菜单共用。
 
-const AMBER := Color(1.0, 0.66, 0.23)
-const AMBER_BRIGHT := Color(1.0, 0.79, 0.40)
-const INK := Color(0.88, 0.91, 0.90)
-const MUTED := Color(0.61, 0.67, 0.69)
-const PANEL := Color(0.022, 0.027, 0.029, 0.82)
-const EDGE := Color(0.26, 0.30, 0.31, 0.92)
+const BLUE := Color(0.35, 0.72, 0.93)
+const BLUE_BRIGHT := Color(0.62, 0.87, 1.0)
+const ORANGE := Color(0.97, 0.60, 0.20)
+const INK := Color(0.91, 0.94, 0.93)
+const MUTED := Color(0.60, 0.66, 0.68)
+const SELECT := Color(0.87, 0.89, 0.88)
+const SELECT_TEXT := Color(0.07, 0.09, 0.10)
+const PANEL := Color(0.050, 0.062, 0.067, 0.88)
+const EDGE := Color(0.40, 0.46, 0.48, 0.92)
 
 static var _font: Font = null
 
 
-## HL2 的窄体无衬线；CJK 用系统回退，避免中文缺字。
+## Portal 2 的 DIN 风格窄体；中文用系统回退。
 static func font() -> Font:
 	if _font == null:
 		var f := SystemFont.new()
@@ -35,7 +39,7 @@ static func panel(fill: Color = PANEL, edge: Color = EDGE, border: int = 1,
 	s.set_corner_radius_all(0)
 	if accent:
 		s.border_width_left = 4
-		s.border_color = AMBER
+		s.border_color = BLUE
 	s.content_margin_left = margin_h
 	s.content_margin_right = margin_h
 	s.content_margin_top = margin_v
@@ -43,7 +47,7 @@ static func panel(fill: Color = PANEL, edge: Color = EDGE, border: int = 1,
 	return s
 
 
-## 场景内 HUD：状态行 / 帮助框 / 顶部提示。字号整体放大。
+## 场景内 HUD：状态行 / 帮助框 / 顶部提示。
 static func apply_hud(root: Node) -> void:
 	var ui := root.get_node_or_null("UILayer")
 	if ui == null:
@@ -55,7 +59,7 @@ static func apply_hud(root: Node) -> void:
 		coord.add_theme_font_override("bold_font", font())
 		coord.add_theme_font_size_override("normal_font_size", 36)
 		coord.add_theme_font_size_override("bold_font_size", 36)
-		coord.add_theme_color_override("default_color", AMBER)
+		coord.add_theme_color_override("default_color", INK)
 		coord.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		coord.add_theme_constant_override("outline_size", 7)
 
@@ -67,18 +71,18 @@ static func apply_hud(root: Node) -> void:
 		pos.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		pos.add_theme_constant_override("outline_size", 4)
 		pos.add_theme_stylebox_override("normal",
-			panel(Color(0.015, 0.019, 0.021, 0.66), EDGE, 1, false, 12, 5))
+			panel(Color(0.035, 0.045, 0.050, 0.70), EDGE, 1, false, 12, 5))
 		pos.modulate = Color.WHITE
 
 	var help := ui.get_node_or_null("HelpLabel") as Label
 	if help != null:
 		help.add_theme_font_override("font", font())
 		help.add_theme_font_size_override("font_size", 19)
-		help.add_theme_color_override("font_color", Color(0.80, 0.84, 0.84))
+		help.add_theme_color_override("font_color", Color(0.82, 0.86, 0.86))
 		help.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
 		help.add_theme_constant_override("outline_size", 0)
 		help.add_theme_stylebox_override("normal",
-			panel(Color(0.012, 0.016, 0.018, 0.76), AMBER, 1, true, 18, 14))
+			panel(Color(0.030, 0.040, 0.045, 0.80), BLUE, 1, true, 18, 14))
 		help.offset_top = -214.0
 		help.offset_right = 1060.0
 
@@ -86,6 +90,23 @@ static func apply_hud(root: Node) -> void:
 	if toast != null:
 		toast.add_theme_font_override("font", font())
 		toast.add_theme_font_size_override("font_size", 26)
-		toast.add_theme_color_override("font_color", AMBER_BRIGHT)
+		toast.add_theme_color_override("font_color", INK)
 		toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		toast.add_theme_constant_override("outline_size", 6)
+
+
+## 菜单/暂停菜单的列表行：普通状态透明，悬停为 Portal 2 的浅灰亮条。
+static func row_style(hover: bool, selected: bool = false) -> StyleBoxFlat:
+	var s := StyleBoxFlat.new()
+	if hover or selected:
+		s.bg_color = SELECT
+		s.border_color = SELECT
+	else:
+		s.bg_color = Color(0.025, 0.032, 0.035, 0.55)
+		s.border_color = Color(0.30, 0.35, 0.37, 0.55)
+	s.set_border_width_all(0)
+	s.border_width_bottom = 1
+	s.set_corner_radius_all(0)
+	if hover or selected:
+		s.border_width_left = 4
+	return s

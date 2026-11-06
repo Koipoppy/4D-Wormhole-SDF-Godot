@@ -42,17 +42,17 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | 03 虫洞沙盒 | `scenes/wormhole_map.tscn` | 平台/柱子沙盒 · 动态 Ellis 喉口 · 左键创建/删除 |
 | 04 动态 Ellis 虫洞 | `scenes/dynamic_ellis.tscn` | 入口移动 + 周期性隐去；隐去时入口完全消失、空间平直，房间颜色保留 |
 
-菜单里点击卡片或按 `1/2/3/4` 进入；游戏中按 `M` 或点右上角"场景选择"返回。
+菜单里点击场景行或按 `1/2/3/4` 进入；游戏中按 `Esc`（或 `M`）打开 Portal 2 风格的暂停菜单，场景选择已合并其中。
 
 ## 操作
 
 | 按键 | 作用 |
 |---|---|
-| 鼠标 / WASD / Space·C / 滚轮 | 切空间内转身 / 移动 / 升降 / 调速（左键捕获鼠标，Esc 释放） |
+| 鼠标 / WASD / Space·C / 滚轮 | 切空间内转身 / 移动 / 升降 / 调速（左键捕获鼠标；Esc 打开暂停菜单） |
 | Q / E | 翻滚 |
 | **V** | 视图：① 第一人称 ② 嵌入图 (w, ρ)——虫洞曲线悬浮在方格平面上方，虚线/竖线为平面投影 |
 | **F** | 超采样 1.0× / 1.5× / 2.0×（SubViewport SSAA） |
-| **M** | 返回场景选择菜单（右上角按钮同效） |
+| **Esc / M** | 打开暂停菜单（继续 / 场景选择 / 回到主菜单 / 退出） |
 
 ## 虫洞沙盒地图（03）
 
@@ -64,7 +64,7 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | 左键 | 在视线前方 8 m 创建/移动虫洞入口 `C` |
 | 右键 / **X** | 删除虫洞，`b₀→0`，空间回到平直 |
 | 飞进入口 | 沿同一张 Ellis 流形连续穿过到另一个房间（无 portal 转移） |
-| **V / F / M** | 嵌入图 / 超采样 / 场景菜单 |
+| **V / F / Esc** | 嵌入图 / 超采样 / 暂停菜单 |
 
 模型说明：
 
@@ -132,7 +132,7 @@ scenes/wormhole_map.tscn    虫洞沙盒地图（大地图 + 平台/柱子，鼠
 scenes/dynamic_ellis.tscn   动态 Ellis 虫洞（入口移动 + 周期性显隐）
 scripts/main.gd             超曲面约束相机、房间边界/喉口、嵌入图、截图自检
 scripts/menu.gd             场景选择页（卡片 + 1/2/3/4 快捷键 + 装饰嵌入曲线）
-scripts/scene_router.gd     常驻返回菜单按钮 + M 快捷键
+scripts/scene_router.gd     Portal 2 暂停菜单 + Esc/M，场景选择已合并
 scripts/floor_2dchecker.gd  导入场景的相机/地板/HUD
 scripts/wormhole_map.gd     虫洞沙盒：地图 SDF、鼠标放置、口对生命周期
 scripts/dynamic_ellis_main.gd 动态 Ellis：入口移动/显隐、平直切换、HUD
@@ -145,7 +145,8 @@ icon.svg
 
 ## 已验证（Godot 4.7.1 实机 + 截图目检）
 
-- `build/menu.png`：场景选择页（三张卡片 + (w,ρ) 嵌入曲线装饰）；
+- `build/menu.png`：Portal 2 / Aperture 风格场景选择页（选中行浅灰亮条 + (w,ρ) 嵌入曲线）；
+- `build/pause_menu.png`：Esc 暂停菜单（继续 / 场景选择 / 回主菜单 / 退出）；
 - `build/check_main.png`：双房间场景，红房间中心蓝色喉口；
 - `build/check_floor.png`：4D-002 的 2D 棋盘悬链面地板；
 - `build/map_empty.png`：虫洞沙盒空地图（房间 + 平台 + 中央柱，2 m 三维格点）；

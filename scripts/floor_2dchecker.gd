@@ -23,7 +23,7 @@ const THROAT_R := 3.0   # Morris–Thorne 喉半径 b₀
 const MODE_NAMES := ["① 第一人称", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """V 嵌入图 (w,ρ) — Morris–Thorne 度规的 Flamm 型嵌入图 | F 超采样
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
+鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 菜单
 你悬浮在 Ellis 虫洞 (零潮汐力 Morris–Thorne 度规) 的悬链面地板上空:
 · 面前地板向喉口 (半径 3m 的球) 收窄, 穿过它就是另一个宇宙 (星空色温不同, 回头可返回)
 · 光线沿弯曲空间的测地线传播: 喉口附近的星光多重像与爱因斯坦环是度规的真实结果
@@ -126,9 +126,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
 		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_set_captured(false)
-		elif event.keycode == KEY_V:
+		if event.keycode == KEY_V:
 			view_mode = (view_mode + 1) % 2
 		elif event.keycode == KEY_F:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)

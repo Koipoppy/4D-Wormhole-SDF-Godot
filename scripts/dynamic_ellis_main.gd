@@ -35,7 +35,7 @@ const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 const MODE_NAMES := ["① 房间", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """动态 Ellis 虫洞 | V 嵌入图 (w,ρ) | F 超采样 | T 入口移动 | Y 显隐
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
+鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 菜单
 你在一蓝一红两个立方体房间之一，房间中心的球体就是 Ellis 虫洞入口:
 · 走进中心虫洞 → 穿过喉口 → 从另一个房间的中心出来（w>0 红 / w<0 蓝）
 · 入口中心 C(t) 在房间里移动；虫洞周期性隐去：b₀→0，入口收缩、空间趋平直
@@ -147,9 +147,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
 		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_set_captured(false)
-		elif event.keycode == KEY_V:
+		if event.keycode == KEY_V:
 			view_mode = (view_mode + 1) % 2
 		elif event.keycode == KEY_F:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)
