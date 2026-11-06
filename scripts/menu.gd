@@ -19,9 +19,9 @@ const SCENES := [
 	},
 	{
 		"tag": "03",
-		"title": "薄壳动态虫洞",
-		"desc": "可移动球口对 · 准静态动态度规",
-		"path": "res://scenes/thinshell.tscn",
+		"title": "虫洞沙盒",
+		"desc": "动态 Ellis · 平台/柱子 · 左键创建/删除",
+		"path": "res://scenes/wormhole_map.tscn",
 	},
 	{
 		"tag": "04",
