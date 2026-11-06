@@ -13,16 +13,22 @@ const SELECT := Color(0.87, 0.89, 0.88)
 const SLOT_COUNT := 5
 const GUN_SLOT := 2
 const STEP := 84.0
+const SHOW_TIME := 1.8
 
 var font: Font
 var ui_scale := 1.0
 var _selected := GUN_SLOT
 var _offset := 0.0
 var _target := 0.0
+var _show_timer := 0.0
 
 
 func _ready() -> void:
 	set_process(true)
+	modulate.a = 0.0
+	if "--hotbar-show" in OS.get_cmdline_user_args():
+		_show_timer = 999.0
+		modulate.a = 1.0
 
 
 func _process(delta: float) -> void:
@@ -33,6 +39,14 @@ func _process(delta: float) -> void:
 	elif _offset != target:
 		_offset = target
 		queue_redraw()
+
+	if _show_timer > 0.0:
+		_show_timer -= delta
+	var target_a := 1.0 if _show_timer > 0.0 else 0.0
+	if absf(modulate.a - target_a) > 0.005:
+		modulate.a = lerpf(modulate.a, target_a, 1.0 - exp(-10.0 * delta))
+	elif modulate.a != target_a:
+		modulate.a = target_a
 
 
 func _input(event: InputEvent) -> void:
@@ -53,7 +67,9 @@ func _input(event: InputEvent) -> void:
 
 
 func _select(idx: int) -> void:
+	_show_timer = SHOW_TIME
 	if idx == _selected:
+		queue_redraw()
 		return
 	_selected = idx
 	queue_redraw()

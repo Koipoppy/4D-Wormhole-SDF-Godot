@@ -17,6 +17,8 @@ const EDGE := Color(0.40, 0.46, 0.48, 0.92)
 const DESIGN_W := 1600.0
 const DESIGN_H := 900.0
 
+const GLASS_SHADER := preload("res://shaders/ui_glass.gdshader")
+
 static var _font: Font = null
 
 
@@ -79,13 +81,13 @@ static func apply_hud(root: Node) -> FourDAxis:
 	var pos := ui.get_node_or_null("PosLabel") as Label
 	if pos != null:
 		pos.add_theme_font_override("font", font())
-		pos.add_theme_font_size_override("font_size", int(round(21.0 * k)))
+		pos.add_theme_font_size_override("font_size", int(round(19.0 * k)))
 		pos.add_theme_color_override("font_color", INK)
 		pos.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		pos.add_theme_constant_override("outline_size", int(round(4.0 * k)))
 		pos.add_theme_stylebox_override("normal",
-			panel(Color(0.014, 0.019, 0.021, 0.74), EDGE, maxi(1, int(round(k))),
-				false, int(round(16.0 * k)), int(round(5.0 * k))))
+			panel(Color(0, 0, 0, 0), Color(0, 0, 0, 0), 0,
+				false, int(round(16.0 * k)), int(round(4.0 * k))))
 		pos.modulate = Color.WHITE
 		pos.anchor_left = 0.0
 		pos.anchor_right = 1.0
@@ -93,8 +95,28 @@ static func apply_hud(root: Node) -> FourDAxis:
 		pos.anchor_bottom = 1.0
 		pos.offset_left = 0.0
 		pos.offset_right = 0.0
-		pos.offset_top = -38.0 * k
+		pos.offset_top = -32.0 * k
 		pos.offset_bottom = 0.0
+
+		# 无色的毛玻璃底：放在状态文字下面
+		var glass := ui.get_node_or_null("StatusGlass") as ColorRect
+		if glass == null:
+			glass = ColorRect.new()
+			glass.name = "StatusGlass"
+			glass.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			var gm := ShaderMaterial.new()
+			gm.shader = GLASS_SHADER
+			glass.material = gm
+			ui.add_child(glass)
+		glass.anchor_left = 0.0
+		glass.anchor_right = 1.0
+		glass.anchor_top = 1.0
+		glass.anchor_bottom = 1.0
+		glass.offset_left = 0.0
+		glass.offset_right = 0.0
+		glass.offset_top = -32.0 * k
+		glass.offset_bottom = 0.0
+		ui.move_child(glass, pos.get_index())
 
 	var help := ui.get_node_or_null("HelpLabel") as Label
 	if help != null:

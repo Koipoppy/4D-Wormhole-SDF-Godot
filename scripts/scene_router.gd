@@ -283,7 +283,7 @@ func _set_hud_visible(on: bool) -> void:
 	if ui == null:
 		return
 	# 只隐藏 HUD 文字/仪表，保留 UILayer/Screen（游戏画面本身）。
-	for name in ["CoordLabel", "PosLabel", "Toast", "FourDAxis", "InventoryBar"]:
+	for name in ["CoordLabel", "PosLabel", "StatusGlass", "Toast", "FourDAxis", "InventoryBar"]:
 		var c := ui.get_node_or_null(name)
 		if c != null:
 			c.visible = on
