@@ -2,3 +2,7 @@
 .godot/
 build/
 *.tmp
+
+# local demo/video artifacts
+wormhole-video/
+wormhole-teardown-2k.mp4
