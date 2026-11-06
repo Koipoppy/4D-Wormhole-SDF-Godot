@@ -39,65 +39,68 @@ var _shot_path := ""
 var _shot_frame := 24
 var _frame := 0
 var _cards: Array[Button] = []
+var _k := 1.0
 var _bg_mat: ShaderMaterial
 var _bg_time := 0.0
+var _rebuild_queued := false
 
 
 func _ready() -> void:
 	_build()
 	_parse_shot_args()
-	resized.connect(_update_bg_aspect)
+	resized.connect(_queue_rebuild)
 	_update_bg_aspect()
 
 
 func _build() -> void:
+	_k = UIStyle.ui_scale(self)
 	_make_background()
 
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	margin.add_theme_constant_override("margin_left", 84)
-	margin.add_theme_constant_override("margin_right", 84)
-	margin.add_theme_constant_override("margin_top", 58)
-	margin.add_theme_constant_override("margin_bottom", 46)
+	margin.add_theme_constant_override("margin_left", int(round(84.0 * _k)))
+	margin.add_theme_constant_override("margin_right", int(round(84.0 * _k)))
+	margin.add_theme_constant_override("margin_top", int(round(58.0 * _k)))
+	margin.add_theme_constant_override("margin_bottom", int(round(46.0 * _k)))
 	add_child(margin)
 
 	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 48)
+	row.add_theme_constant_override("separation", int(round(48.0 * _k)))
 	margin.add_child(row)
 
 	var col := VBoxContainer.new()
-	col.custom_minimum_size = Vector2(780, 0)
+	col.custom_minimum_size = Vector2(780.0 * _k, 0)
 	col.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	col.add_theme_constant_override("separation", 8)
+	col.add_theme_constant_override("separation", int(round(8.0 * _k)))
 	row.add_child(col)
 
 	var kicker := Label.new()
 	kicker.text = "APERTURE SCIENCE   //   TEST TRACK 04"
 	kicker.add_theme_font_override("font", UIStyle.font())
-	kicker.add_theme_font_size_override("font_size", 18)
+	kicker.add_theme_font_size_override("font_size", int(round(18.0 * _k)))
 	kicker.add_theme_color_override("font_color", UIStyle.BLUE)
 	col.add_child(kicker)
 
 	var title := Label.new()
 	title.text = "4D 虫洞实验场"
 	title.add_theme_font_override("font", UIStyle.font())
-	title.add_theme_font_size_override("font_size", 66)
+	title.add_theme_font_size_override("font_size", int(round(66.0 * _k)))
 	title.add_theme_color_override("font_color", UIStyle.INK)
 	col.add_child(title)
 
 	var sub := Label.new()
 	sub.text = "Ellis / Morris–Thorne 零潮汐力虫洞 · 光线沿测地线传播"
 	sub.add_theme_font_override("font", UIStyle.font())
-	sub.add_theme_font_size_override("font_size", 20)
+	sub.add_theme_font_size_override("font_size", int(round(20.0 * _k)))
 	sub.add_theme_color_override("font_color", UIStyle.MUTED)
 	col.add_child(sub)
 
 	var gap := Control.new()
-	gap.custom_minimum_size = Vector2(0, 30)
+	gap.custom_minimum_size = Vector2(0, 30.0 * _k)
 	col.add_child(gap)
 
 	var shelf := VBoxContainer.new()
-	shelf.add_theme_constant_override("separation", 2)
+	shelf.add_theme_constant_override("separation", int(round(2.0 * _k)))
 	col.add_child(shelf)
 
 	for data in SCENES:
@@ -112,7 +115,7 @@ func _build() -> void:
 	var foot := Label.new()
 	foot.text = "点击场景进入   ·   数字键 1 / 2 / 3 / 4   ·   游戏中 Esc 打开菜单"
 	foot.add_theme_font_override("font", UIStyle.font())
-	foot.add_theme_font_size_override("font_size", 17)
+	foot.add_theme_font_size_override("font_size", int(round(17.0 * _k)))
 	foot.add_theme_color_override("font_color", Color(0.52, 0.58, 0.60))
 	col.add_child(foot)
 
@@ -153,10 +156,10 @@ func _make_background() -> void:
 	var panel := ColorRect.new()
 	panel.anchor_right = 0.565
 	panel.anchor_bottom = 1.0
-	panel.offset_left = 56.0
-	panel.offset_top = 34.0
+	panel.offset_left = 56.0 * _k
+	panel.offset_top = 34.0 * _k
 	panel.offset_right = 0.0
-	panel.offset_bottom = -34.0
+	panel.offset_bottom = -34.0 * _k
 	panel.color = Color(0.008, 0.012, 0.014, 0.64)
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(panel)
@@ -165,10 +168,10 @@ func _make_background() -> void:
 	line.anchor_left = 0.565
 	line.anchor_right = 0.565
 	line.anchor_bottom = 1.0
-	line.offset_left = -2.0
-	line.offset_top = 34.0
+	line.offset_left = -2.0 * _k
+	line.offset_top = 34.0 * _k
 	line.offset_right = 0.0
-	line.offset_bottom = -34.0
+	line.offset_bottom = -34.0 * _k
 	line.color = Color(0.35, 0.72, 0.93, 0.55)
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(line)
@@ -208,6 +211,25 @@ func _bg_camera() -> Dictionary:
 	return {"pos": p, "fwd": f2, "right": r2, "up": up}
 
 
+func _queue_rebuild() -> void:
+	if _rebuild_queued:
+		return
+	_rebuild_queued = true
+	call_deferred("_rebuild")
+
+
+## 窗口被拖动/最大化后，按新的视口尺寸重建，避免 UI 比例缩水。
+func _rebuild() -> void:
+	_rebuild_queued = false
+	for c in get_children():
+		remove_child(c)
+		c.queue_free()
+	_cards.clear()
+	_bg_mat = null
+	_build()
+	_update_bg_aspect()
+
+
 func _update_bg_aspect() -> void:
 	if _bg_mat == null:
 		return
@@ -217,34 +239,34 @@ func _update_bg_aspect() -> void:
 func _make_card(data: Dictionary) -> Button:
 	var b := Button.new()
 	b.text = ""
-	b.custom_minimum_size = Vector2(780, 100)
+	b.custom_minimum_size = Vector2(780.0 * _k, 100.0 * _k)
 	b.focus_mode = Control.FOCUS_NONE
 	b.clip_contents = true
-	b.add_theme_stylebox_override("normal", UIStyle.row_style(false))
-	b.add_theme_stylebox_override("hover", UIStyle.row_style(true))
-	b.add_theme_stylebox_override("pressed", UIStyle.row_style(true))
+	b.add_theme_stylebox_override("normal", UIStyle.row_style(false, false, _k))
+	b.add_theme_stylebox_override("hover", UIStyle.row_style(true, false, _k))
+	b.add_theme_stylebox_override("pressed", UIStyle.row_style(true, false, _k))
 	b.pressed.connect(_open.bind(String(data.path)))
 
 	var m := MarginContainer.new()
 	m.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	m.add_theme_constant_override("margin_left", 22)
-	m.add_theme_constant_override("margin_right", 22)
-	m.add_theme_constant_override("margin_top", 10)
-	m.add_theme_constant_override("margin_bottom", 10)
+	m.add_theme_constant_override("margin_left", int(round(22.0 * _k)))
+	m.add_theme_constant_override("margin_right", int(round(22.0 * _k)))
+	m.add_theme_constant_override("margin_top", int(round(10.0 * _k)))
+	m.add_theme_constant_override("margin_bottom", int(round(10.0 * _k)))
 	b.add_child(m)
 
 	var h := HBoxContainer.new()
-	h.add_theme_constant_override("separation", 24)
+	h.add_theme_constant_override("separation", int(round(24.0 * _k)))
 	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	m.add_child(h)
 
 	var tag := Label.new()
 	tag.text = String(data.tag)
-	tag.custom_minimum_size = Vector2(54, 0)
+	tag.custom_minimum_size = Vector2(54.0 * _k, 0)
 	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	tag.add_theme_font_override("font", UIStyle.font())
-	tag.add_theme_font_size_override("font_size", 26)
+	tag.add_theme_font_size_override("font_size", int(round(26.0 * _k)))
 	tag.add_theme_color_override("font_color", UIStyle.BLUE)
 	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	h.add_child(tag)
@@ -259,7 +281,7 @@ func _make_card(data: Dictionary) -> Button:
 	var title := Label.new()
 	title.text = String(data.title)
 	title.add_theme_font_override("font", UIStyle.font())
-	title.add_theme_font_size_override("font_size", 28)
+	title.add_theme_font_size_override("font_size", int(round(28.0 * _k)))
 	title.add_theme_color_override("font_color", UIStyle.INK)
 	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(title)
@@ -267,7 +289,7 @@ func _make_card(data: Dictionary) -> Button:
 	var desc := Label.new()
 	desc.text = String(data.desc)
 	desc.add_theme_font_override("font", UIStyle.font())
-	desc.add_theme_font_size_override("font_size", 17)
+	desc.add_theme_font_size_override("font_size", int(round(17.0 * _k)))
 	desc.add_theme_color_override("font_color", UIStyle.MUTED)
 	desc.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	v.add_child(desc)
@@ -283,7 +305,7 @@ func _make_card(data: Dictionary) -> Button:
 func _select_card(b: Button) -> void:
 	for c in _cards:
 		var on: bool = c == b
-		c.add_theme_stylebox_override("normal", UIStyle.row_style(on))
+		c.add_theme_stylebox_override("normal", UIStyle.row_style(on, false, _k))
 		var tag: Label = c.get_meta("tag_label")
 		var title: Label = c.get_meta("title_label")
 		var desc: Label = c.get_meta("desc_label")

@@ -78,6 +78,7 @@ var four_axis: FourDAxis
 
 func _ready() -> void:
 	four_axis = UIStyle.apply_hud(self)
+	get_viewport().size_changed.connect(_restyle_hud)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
@@ -103,6 +104,10 @@ func _ready() -> void:
 	_apply_scale()
 	help_label.text = HELP_TEXT
 	toast.text = "点击窗口捕获鼠标 → 左键在视线前方创建虫洞；右键/X 删除，空间回到平直"
+
+
+func _restyle_hud() -> void:
+	four_axis = UIStyle.apply_hud(self)
 
 
 func _parse_shot_args() -> void:

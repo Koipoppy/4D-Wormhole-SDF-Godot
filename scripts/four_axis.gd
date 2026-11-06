@@ -12,6 +12,7 @@ const WHITE_AXIS := Color(0.82, 0.92, 1.0)
 const Y_AXIS := Color(0.72, 0.86, 0.70)
 
 var font: Font
+var ui_scale := 1.0
 var _pos := Vector4.ZERO
 var _right := Vector4(1, 0, 0, 0)
 var _up := Vector4(0, 1, 0, 0)
@@ -43,14 +44,15 @@ func _txt(f: Font, p: Vector2, s: String, sz: int, col: Color) -> void:
 
 func _draw() -> void:
 	var f := font if font != null else ThemeDB.fallback_font
+	var k := ui_scale
 
-	_txt(f, Vector2(12, 21), "4D FRAME", 14, BLUE)
-	_txt(f, Vector2(12, 38), "位置 / 朝向", 12, MUTED)
+	_txt(f, Vector2(12, 21) * k, "4D FRAME", int(round(14.0 * k)), BLUE)
+	_txt(f, Vector2(12, 38) * k, "位置 / 朝向", int(round(12.0 * k)), MUTED)
 
-	var c := Vector2(78, 118)
-	var scale := 44.0
-	draw_circle(c, 52.0, Color(0.35, 0.72, 0.93, 0.04))
-	draw_arc(c, 52.0, 0.0, TAU, 48, Color(0.35, 0.72, 0.93, 0.22), 1.0)
+	var c := Vector2(78, 118) * k
+	var scale := 44.0 * k
+	draw_circle(c, 52.0 * k, Color(0.35, 0.72, 0.93, 0.04))
+	draw_arc(c, 52.0 * k, 0.0, TAU, 48, Color(0.35, 0.72, 0.93, 0.22), maxf(1.0, k))
 
 	var axes := [
 		[Vector4(1, 0, 0, 0), ORANGE, "X"],
@@ -68,24 +70,26 @@ func _draw() -> void:
 			continue
 		d = d.normalized()
 		var tip := c + d * (scale * ln)
-		draw_line(c, tip, Color(0, 0, 0, 0.65), 4.0, true)
-		draw_line(c, tip, col, 2.0, true)
+		draw_line(c, tip, Color(0, 0, 0, 0.65), maxf(2.0, 4.0 * k), true)
+		draw_line(c, tip, col, maxf(1.0, 2.0 * k), true)
 		var side := Vector2(-d.y, d.x)
-		draw_line(tip, tip - d * 8.0 + side * 4.0, col, 2.0)
-		draw_line(tip, tip - d * 8.0 - side * 4.0, col, 2.0)
-		_txt(f, tip + d * 10.0 + Vector2(-4, 4), axis_name, 13, col)
+		draw_line(tip, tip - d * (8.0 * k) + side * (4.0 * k), col, maxf(1.0, 2.0 * k))
+		draw_line(tip, tip - d * (8.0 * k) - side * (4.0 * k), col, maxf(1.0, 2.0 * k))
+		_txt(f, tip + d * (10.0 * k) + Vector2(-4.0, 4.0) * k, axis_name,
+			int(round(13.0 * k)), col)
 
 	# 坐标读数
-	var x := 154.0
-	_txt(f, Vector2(x, 38), "POSITION", 11, BLUE)
+	var x := 154.0 * k
+	_txt(f, Vector2(x, 38.0 * k), "POSITION", int(round(11.0 * k)), BLUE)
 	var rows := [
 		["X", _pos.x, ORANGE],
 		["Y", _pos.y, Y_AXIS],
 		["Z", _pos.z, BLUE],
 		["W", _pos.w, WHITE_AXIS],
 	]
-	var y := 60.0
+	var y := 60.0 * k
 	for r in rows:
-		_txt(f, Vector2(x, y), String(r[0]), 13, r[2])
-		_txt(f, Vector2(x + 20, y), "%+.2f" % float(r[1]), 13, INK)
-		y += 23.0
+		_txt(f, Vector2(x, y), String(r[0]), int(round(13.0 * k)), r[2])
+		_txt(f, Vector2(x + 20.0 * k, y), "%+.2f" % float(r[1]),
+			int(round(13.0 * k)), INK)
+		y += 23.0 * k

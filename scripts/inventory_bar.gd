@@ -15,6 +15,7 @@ const GUN_SLOT := 2
 const STEP := 84.0
 
 var font: Font
+var ui_scale := 1.0
 var _selected := GUN_SLOT
 var _offset := 0.0
 var _target := 0.0
@@ -25,7 +26,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	var target := (float(SLOT_COUNT - 1) * 0.5 - float(_selected)) * STEP
+	var target := (float(SLOT_COUNT - 1) * 0.5 - float(_selected)) * STEP * ui_scale
 	if absf(_offset - target) > 0.05:
 		_offset = lerpf(_offset, target, 1.0 - exp(-14.0 * delta))
 		queue_redraw()
@@ -61,7 +62,8 @@ func _select(idx: int) -> void:
 func _draw() -> void:
 	var cx := size.x * 0.5
 	var cy := size.y * 0.5
-	var font := self.font if self.font != null else ThemeDB.fallback_font
+	var k := ui_scale
+	var step := STEP * k
 
 	# 先画未选中的槽，再画选中槽，保证选中槽压在最上层
 	for pass_i in 2:
@@ -69,20 +71,20 @@ func _draw() -> void:
 			var sel := i == _selected
 			if (pass_i == 0) == sel:
 				continue
-			var x := cx + (float(i) - (SLOT_COUNT - 1) * 0.5) * STEP + _offset
-			var sz := 78.0 if sel else 62.0
+			var x := cx + (float(i) - (SLOT_COUNT - 1) * 0.5) * step + _offset
+			var sz := (78.0 if sel else 62.0) * k
 			var rect := Rect2(x - sz * 0.5, cy - sz * 0.5, sz, sz)
 			if sel:
 				draw_rect(rect, Color(SELECT.r, SELECT.g, SELECT.b, 0.10))
-				draw_rect(rect, Color(SELECT.r, SELECT.g, SELECT.b, 0.95), false, 2.0)
-				draw_rect(Rect2(x - 20.0, rect.position.y - 4.0, 40.0, 2.0), BLUE)
+				draw_rect(rect, Color(SELECT.r, SELECT.g, SELECT.b, 0.95), false, maxf(1.0, 2.0 * k))
+				draw_rect(Rect2(x - 20.0 * k, rect.position.y - 4.0 * k, 40.0 * k, 2.0 * k), BLUE)
 			else:
-				draw_rect(rect, Color(0.85, 0.88, 0.88, 0.58), false, 2.0)
+				draw_rect(rect, Color(0.85, 0.88, 0.88, 0.58), false, maxf(1.0, 2.0 * k))
 
 			if i == GUN_SLOT:
 				_draw_gun(Vector2(x, cy), sz / 72.0)
 			else:
-				draw_circle(Vector2(x, cy), 2.2, Color(0.85, 0.88, 0.88, 0.55))
+				draw_circle(Vector2(x, cy), 2.2 * k, Color(0.85, 0.88, 0.88, 0.55))
 
 
 
