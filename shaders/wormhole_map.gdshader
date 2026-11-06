@@ -109,14 +109,18 @@ vec4 cat_normal(vec4 p){
 
 // 悬链面地板棋盘 (解析抗锯齿; 强畸变处导数可能爆炸, 做 NaN/INF 防护)
 vec3 cat_albedo(vec4 p){
-	vec3 coord = vec3(p.x - entrance_c.x, p.y - entrance_c.y, p.w) * 0.55;
-	float ck = mod(floor(coord.x) + floor(coord.y) + floor(coord.z), 2.0);
-	float fw = fwidth(coord.x) + fwidth(coord.y) + fwidth(coord.z);
-	if (isnan(fw) || isinf(fw) || fw < 0.0){
-		fw = 1.0;
-	}
-	ck = mix(ck, 0.5, clamp(fw * 1.5, 0.0, 1.0));
-	return mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+	// 地板使用同一个三维立方网格: 世界 xyz (a,b,c)，不用 xyw
+	vec3 q = p.xyz * 0.5;
+	vec3 f = abs(fract(q) - 0.5);
+	float line = 1.0 - smoothstep(0.0, 0.04, min(f.x, min(f.y, f.z)));
+	float ck = mod(floor(q.x) + floor(q.y) + floor(q.z), 2.0);
+	vec3 dq = fwidth(q);
+	float aa = clamp(max(dq.x, max(dq.y, dq.z)) * 4.0, 0.0, 1.0);
+	ck = mix(ck, 0.5, aa);
+	line *= (1.0 - aa);
+	vec3 alb = mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+	alb = mix(alb, vec3(0.88, 0.90, 0.94), line * 0.30);
+	return alb;
 }
 
 // ============================================================================
@@ -244,16 +248,17 @@ vec3 room_surface(vec4 p, vec4 n, vec3 ldir){
 	bool red = (throat_r < 0.02) ? (flat_side > 0.5) : (p.w > 0.0);
 	vec3 base = red ? vec3(0.42, 0.055, 0.050) : vec3(0.045, 0.09, 0.40);
 	vec3 tile = red ? vec3(0.68, 0.14, 0.11) : vec3(0.13, 0.28, 0.70);
-	vec2 uv;
-	if (abs(n.x) > 0.5) uv = p.yz;
-	else if (abs(n.y) > 0.5) uv = p.xz;
-	else uv = p.xy;
-	vec2 cell = floor(uv * 0.5);
-	float checker = mod(cell.x + cell.y, 2.0);
-	vec3 col = mix(base, tile, checker);
-	vec2 f = abs(fract(uv * 0.5) - 0.5);
-	float line = 1.0 - smoothstep(0.0, 0.035, min(f.x, f.y));
-	col = mix(col, vec3(0.92), line * 0.42);
+	// 外部三维立方网格: 世界 xyz (a,b,c)，不用 per-face (x,y,w)
+	vec3 q = p.xyz * 0.5;
+	vec3 f = abs(fract(q) - 0.5);
+	float line = 1.0 - smoothstep(0.0, 0.035, min(f.x, min(f.y, f.z)));
+	float ck = mod(floor(q.x) + floor(q.y) + floor(q.z), 2.0);
+	vec3 dq = fwidth(q);
+	float aa = clamp(max(dq.x, max(dq.y, dq.z)) * 4.0, 0.0, 1.0);
+	ck = mix(ck, 0.5, aa);
+	line *= (1.0 - aa);
+	vec3 col = mix(base, tile, ck);
+	col = mix(col, vec3(0.92), line * 0.40);
 	float dif = clamp(dot(normalize(n.xyz), normalize(ldir)), 0.0, 1.0);
 	float fill = clamp(dot(normalize(n.xyz), normalize(-cam_fwd.xyz)), 0.0, 1.0);
 	col *= 0.55 + 0.55 * dif + 0.22 * fill;
@@ -272,8 +277,11 @@ const vec3 OBS3_C = vec3(20.0, 0.0, -6.0);
 const vec3 OBS3_H = vec3(1.6, 1.6, 8.0);
 
 float box_dist(vec4 p, vec3 c, vec3 h){
+	// 真欧氏盒 SDF: 用 max-norm 时射线会在盒角附近穿进盒内,
+	// 命中点落在内部不同深度, 格纹被切成同心条带。
 	vec3 d = abs(p.xyz - c) - h;
-	return max(d.x, max(d.y, d.z));
+	vec3 q = max(d, vec3(0.0));
+	return length(q) + min(max(d.x, max(d.y, d.z)), 0.0);
 }
 
 vec4 box_normal(vec4 p, vec3 c, vec3 h){
@@ -303,38 +311,60 @@ vec4 map_normal(vec4 p){
 	return n;
 }
 
+// 用命中前一点的局部射线与轴对齐面求交。步进停止位置带有量化误差,
+// 掠射面上会放大成十几厘米的横向抖动; 解析交点只由光滑的射线决定。
+vec3 face_hit(vec4 p0, vec4 v, vec4 n, vec3 c, vec3 h){
+	vec3 p = p0.xyz;
+	if (abs(n.x) > 0.5){
+		float t = (c.x + sign(n.x) * h.x - p0.x) / (abs(v.x) > 1e-5 ? v.x : 1e-5);
+		p = p0.xyz + v.xyz * clamp(t, 0.0, 1.5);
+	} else if (abs(n.y) > 0.5){
+		float t = (c.y + sign(n.y) * h.y - p0.y) / (abs(v.y) > 1e-5 ? v.y : 1e-5);
+		p = p0.xyz + v.xyz * clamp(t, 0.0, 1.5);
+	} else {
+		float t = (c.z + sign(n.z) * h.z - p0.z) / (abs(v.z) > 1e-5 ? v.z : 1e-5);
+		p = p0.xyz + v.xyz * clamp(t, 0.0, 1.5);
+	}
+	return p;
+}
+
 vec3 obstacle_surface(vec4 p, vec4 n, vec4 ldir, vec3 base, vec3 tile){
-	vec2 uv;
-	if (abs(n.x) > 0.5) uv = p.yz;
-	else if (abs(n.y) > 0.5) uv = p.xz;
-	else uv = p.xy;
-	vec2 cell = floor(uv * 0.8);
-	float checker = mod(cell.x + cell.y, 2.0);
-	vec3 col = mix(base, tile, checker);
-	vec2 f = abs(fract(uv * 0.8) - 0.5);
-	float line = 1.0 - smoothstep(0.0, 0.05, min(f.x, f.y));
+	// 外部三维立方网格: 世界 xyz (a,b,c)，不用 per-face (x,y,w)
+	vec3 q = p.xyz * 0.5;
+	vec3 f = abs(fract(q) - 0.5);
+	float line = 1.0 - smoothstep(0.0, 0.035, min(f.x, min(f.y, f.z)));
+	float ck = mod(floor(q.x) + floor(q.y) + floor(q.z), 2.0);
+	vec3 dq = fwidth(q);
+	float aa = clamp(max(dq.x, max(dq.y, dq.z)) * 4.0, 0.0, 1.0);
+	ck = mix(ck, 0.5, aa);
+	line *= (1.0 - aa);
+	vec3 col = mix(base, tile, ck);
 	col = mix(col, vec3(0.85, 0.92, 1.0), line * 0.28);
 	float dif = clamp(dot(normalize(n), normalize(ldir)), 0.0, 1.0);
 	col *= 0.55 + 0.55 * dif;
 	return col;
 }
 
-vec3 map_surface(vec4 p, vec4 n, vec4 ldir){
+vec3 map_surface(vec4 p, vec4 n, vec4 ldir, vec4 v, vec4 p0){
 	float d = room_dist(p);
-	vec3 col = room_surface(p, n, ldir.xyz);
+	vec3 sp = face_hit(p0, v, n, ROOM_C, vec3(ROOM_L));
+	vec3 col = room_surface(vec4(sp, p.w), n, ldir.xyz);
 	float d1 = box_dist(p, OBS1_C, OBS1_H);
 	if (d1 < d){
 		d = d1;
-		col = obstacle_surface(p, n, ldir, vec3(0.035, 0.16, 0.19), vec3(0.06, 0.28, 0.32));
+		sp = face_hit(p0, v, n, OBS1_C, OBS1_H);
+		col = obstacle_surface(vec4(sp, 0.0), n, ldir, vec3(0.035, 0.16, 0.19), vec3(0.06, 0.28, 0.32));
 	}
 	float d2 = box_dist(p, OBS2_C, OBS2_H);
 	if (d2 < d){
 		d = d2;
-		col = obstacle_surface(p, n, ldir, vec3(0.045, 0.12, 0.22), vec3(0.08, 0.22, 0.36));
+		sp = face_hit(p0, v, n, OBS2_C, OBS2_H);
+		col = obstacle_surface(vec4(sp, 0.0), n, ldir, vec3(0.045, 0.12, 0.22), vec3(0.08, 0.22, 0.36));
 	}
 	float d3 = box_dist(p, OBS3_C, OBS3_H);
 	if (d3 < d){
-		col = obstacle_surface(p, n, ldir, vec3(0.18, 0.09, 0.035), vec3(0.32, 0.16, 0.06));
+		sp = face_hit(p0, v, n, OBS3_C, OBS3_H);
+		col = obstacle_surface(vec4(sp, 0.0), n, ldir, vec3(0.18, 0.09, 0.035), vec3(0.32, 0.16, 0.06));
 	}
 	return col;
 }
@@ -347,6 +377,7 @@ vec3 render_scene(vec2 uv){
 
 	float travel = 0.0;
 	bool hit = false;
+	vec4 p0 = p;
 
 	for (int i = 0; i < MAX_STEPS; i++){
 		float wd = map_dist(p);
@@ -355,6 +386,7 @@ vec3 render_scene(vec2 uv){
 			break;
 		}
 		float h = clamp(0.5 * wd + 0.02, 0.04, 0.6);
+		p0 = p;
 
 		// 约束测地线: 房间墙和中心喉口都在同一张 Ellis 超曲面上。
 		p += v * h;
@@ -371,13 +403,12 @@ vec3 render_scene(vec2 uv){
 
 	vec3 col;
 	if (hit){
-		vec4 n = room_normal(p);
-		vec3 ldir = normalize(sun_dir(time_s).xyz);
-		col = room_surface(p, n, ldir);
-		float fog = 1.0 - exp(-0.012 * travel);
-		bool red = (throat_r < 0.02) ? (flat_side > 0.5) : (p.w > 0.0);
-		vec3 fogc = red ? vec3(0.05, 0.01, 0.01) : vec3(0.01, 0.02, 0.05);
-		col = mix(col, fogc, clamp(fog, 0.0, 1.0));
+		// 命中点收紧: 步进在 wd<0.02 停下, 掠射面上这点提前量会被放大成
+		// 十几厘米的横向抖动 (格纹扭成同心条带)。用命中前一点的局部射线
+		// 与盒面解析求交, 格纹坐标只由光滑的射线决定。
+		vec4 n = map_normal(p);
+		vec4 ldir = normalize(sun_dir(time_s));
+		col = map_surface(p, n, ldir, v, p0);
 	} else {
 		col = vec3(0.03, 0.035, 0.04);
 	}

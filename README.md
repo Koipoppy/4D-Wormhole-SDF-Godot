@@ -73,6 +73,9 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
   `ρ=b₀·cosh(w/b₀)`，光线沿瞬时 Ellis 测地线传播。
 - 再次左键移动入口；右键/X 删除后回到平直。入口移动/消失不会把玩家拖向喉口
   （玩家保持绝对位置，只重算 `w`）。
+- 墙面/地板/平台共用同一套**世界坐标三维立方格点**（格距 2 m，用 `(x,y,z)` 而不是
+  每个面的 `(x,y,w)`）；格纹坐标取命中前一点与盒面的解析交点，掠射平台不会因步进
+  量化出现同心条带。
 - 限制：`b₀=0` 是 GR pinch-off 极限，不是完整 4D Einstein 解；目前一次一个虫洞。
 
 ## 动态 Ellis 虫洞（04）
@@ -145,8 +148,8 @@ icon.svg
 - `build/menu.png`：场景选择页（三张卡片 + (w,ρ) 嵌入曲线装饰）；
 - `build/check_main.png`：双房间场景，红房间中心蓝色喉口；
 - `build/check_floor.png`：4D-002 的 2D 棋盘悬链面地板；
-- `build/map_empty.png`：虫洞沙盒空地图（房间 + 平台 + 中央柱）；
-- `build/map_pair.png`：在沙盒中创建的一对虫洞（A 青色 / B 品红）；
+- `build/map_empty.png`：虫洞沙盒空地图（房间 + 平台 + 中央柱，2 m 三维格点）；
+- `build/map_created.png`：左键创建虫洞入口后的沙盒（喉口 + 对面房间）；
 - `build/dynamic_vis_a.png`：动态 Ellis 可见相位（可见度 1.00）；
 - `build/dynamic_vis_mid.png`：淡出中（可见度约 0.3，喉口缩小，房间颜色保留）；
 - `build/dynamic_vis_b.png`：完全隐去（可见度 0、`b₀=0`，平直平面 `w=0`，房间仍为红色）；
