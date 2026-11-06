@@ -109,14 +109,18 @@ vec4 cat_normal(vec4 p){
 
 // 悬链面地板棋盘 (解析抗锯齿; 强畸变处导数可能爆炸, 做 NaN/INF 防护)
 vec3 cat_albedo(vec4 p){
-	vec3 coord = vec3(p.x - entrance_c.x, p.y - entrance_c.y, p.w) * 0.55;
-	float ck = mod(floor(coord.x) + floor(coord.y) + floor(coord.z), 2.0);
-	float fw = fwidth(coord.x) + fwidth(coord.y) + fwidth(coord.z);
-	if (isnan(fw) || isinf(fw) || fw < 0.0){
-		fw = 1.0;
-	}
-	ck = mix(ck, 0.5, clamp(fw * 1.5, 0.0, 1.0));
-	return mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+	// 地板使用同一个三维立方网格: 世界 xyz (a,b,c)，不用 xyw
+	vec3 q = p.xyz * 0.5;
+	vec3 f = abs(fract(q) - 0.5);
+	float line = 1.0 - smoothstep(0.0, 0.04, min(f.x, min(f.y, f.z)));
+	float ck = mod(floor(q.x) + floor(q.y) + floor(q.z), 2.0);
+	vec3 dq = fwidth(q);
+	float aa = clamp(max(dq.x, max(dq.y, dq.z)) * 4.0, 0.0, 1.0);
+	ck = mix(ck, 0.5, aa);
+	line *= (1.0 - aa);
+	vec3 alb = mix(vec3(0.30, 0.31, 0.34), vec3(0.62, 0.61, 0.62), ck);
+	alb = mix(alb, vec3(0.88, 0.90, 0.94), line * 0.30);
+	return alb;
 }
 
 // ============================================================================
@@ -244,16 +248,17 @@ vec3 room_surface(vec4 p, vec4 n, vec3 ldir){
 	bool red = (throat_r < 0.02) ? (flat_side > 0.5) : (p.w > 0.0);
 	vec3 base = red ? vec3(0.42, 0.055, 0.050) : vec3(0.045, 0.09, 0.40);
 	vec3 tile = red ? vec3(0.68, 0.14, 0.11) : vec3(0.13, 0.28, 0.70);
-	vec2 uv;
-	if (abs(n.x) > 0.5) uv = p.yz;
-	else if (abs(n.y) > 0.5) uv = p.xz;
-	else uv = p.xy;
-	vec2 cell = floor(uv * 0.5);
-	float checker = mod(cell.x + cell.y, 2.0);
-	vec3 col = mix(base, tile, checker);
-	vec2 f = abs(fract(uv * 0.5) - 0.5);
-	float line = 1.0 - smoothstep(0.0, 0.035, min(f.x, f.y));
-	col = mix(col, vec3(0.92), line * 0.42);
+	// 外部三维立方网格: 世界 xyz (a,b,c)，不用 per-face (x,y,w)
+	vec3 q = p.xyz * 0.5;
+	vec3 f = abs(fract(q) - 0.5);
+	float line = 1.0 - smoothstep(0.0, 0.035, min(f.x, min(f.y, f.z)));
+	float ck = mod(floor(q.x) + floor(q.y) + floor(q.z), 2.0);
+	vec3 dq = fwidth(q);
+	float aa = clamp(max(dq.x, max(dq.y, dq.z)) * 4.0, 0.0, 1.0);
+	ck = mix(ck, 0.5, aa);
+	line *= (1.0 - aa);
+	vec3 col = mix(base, tile, ck);
+	col = mix(col, vec3(0.92), line * 0.40);
 	float dif = clamp(dot(normalize(n.xyz), normalize(ldir)), 0.0, 1.0);
 	float fill = clamp(dot(normalize(n.xyz), normalize(-cam_fwd.xyz)), 0.0, 1.0);
 	col *= 0.55 + 0.55 * dif + 0.22 * fill;
@@ -295,10 +300,7 @@ vec3 render_scene(vec2 uv){
 		vec4 n = room_normal(p);
 		vec3 ldir = normalize(sun_dir(time_s).xyz);
 		col = room_surface(p, n, ldir);
-		float fog = 1.0 - exp(-0.012 * travel);
-		bool red = (throat_r < 0.02) ? (flat_side > 0.5) : (p.w > 0.0);
-		vec3 fogc = red ? vec3(0.05, 0.01, 0.01) : vec3(0.01, 0.02, 0.05);
-		col = mix(col, fogc, clamp(fog, 0.0, 1.0));
+		// 距离雾已移除: 其等距线在平台上形成同心圆环
 	} else {
 		col = vec3(0.03, 0.035, 0.04);
 	}
