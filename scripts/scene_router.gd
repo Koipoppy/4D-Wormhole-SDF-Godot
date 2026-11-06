@@ -27,7 +27,9 @@ func _ready() -> void:
 	_root.visible = false
 	if "--pause-preview" in OS.get_cmdline_user_args():
 		_root.visible = true
-		_set_hud_visible(false)
+		# 场景的 HUD（四维仪表/物品栏）由 UIStyle 在场景 _ready 里创建，
+		# 延后一帧再隐藏，截图预览才和真实暂停一致。
+		call_deferred("_set_hud_visible", false)
 
 
 func _build() -> void:
@@ -38,17 +40,21 @@ func _build() -> void:
 
 	var dim := ColorRect.new()
 	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.color = Color(0.008, 0.013, 0.016, 0.62)
+	dim.color = Color(0.008, 0.013, 0.016, 0.38)
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	_root.add_child(dim)
 
 	var panel := PanelContainer.new()
-	panel.offset_left = 64.0
-	panel.offset_top = 78.0
-	panel.offset_right = 632.0
-	panel.offset_bottom = 78.0 + 596.0
+	panel.anchor_left = 0.5
+	panel.anchor_right = 0.5
+	panel.anchor_top = 0.5
+	panel.anchor_bottom = 0.5
+	panel.offset_left = -300.0
+	panel.offset_right = 300.0
+	panel.offset_top = -290.0
+	panel.offset_bottom = 290.0
 	panel.add_theme_stylebox_override("panel",
-		UIStyle.panel(Color(0.045, 0.056, 0.061, 0.95), UIStyle.EDGE, 1, true, 30, 24))
+		UIStyle.panel(Color(0.045, 0.056, 0.061, 0.84), UIStyle.EDGE, 1, true, 30, 24))
 	_root.add_child(panel)
 
 	var v := VBoxContainer.new()
@@ -249,8 +255,13 @@ func _set_hud_visible(on: bool) -> void:
 	if cur == null:
 		return
 	var ui := cur.get_node_or_null("UILayer")
-	if ui != null:
-		ui.visible = on
+	if ui == null:
+		return
+	# 只隐藏 HUD 文字/仪表，保留 UILayer/Screen（游戏画面本身）。
+	for name in ["CoordLabel", "PosLabel", "Toast", "FourDAxis", "InventoryBar"]:
+		var c := ui.get_node_or_null(name)
+		if c != null:
+			c.visible = on
 
 
 func _quit() -> void:

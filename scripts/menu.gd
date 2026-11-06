@@ -1,9 +1,9 @@
 extends Control
 ## 场景选择页面：游戏启动后的入口。
 ##
-## Portal 2 / Aperture 风格：黑底、白色 DIN 字、蓝色强调，
-## 选中行是浅灰亮条（很 Portal 2 的交互语言）。
-## 场景列表在 SCENES 里维护；点击行或按 1/2/3/4 进入。
+## Portal 2 / Aperture 风格：白色 DIN 字、蓝色强调、选中行浅灰亮条。
+## 背景直接复用 02「悬链面棋盘地板」的着色器（悬链面地板 + 双宇宙星空），
+## 左侧压一层暗面板保证文字可读。场景列表在 SCENES 里维护。
 
 const SCENES := [
 	{
@@ -32,22 +32,27 @@ const SCENES := [
 	},
 ]
 
-const BG := Color(0.008, 0.011, 0.012)
+const FLOOR_SHADER := preload("res://shaders/floor_2dchecker.gdshader")
 const THROAT_R := 3.0
 
 var _shot_path := ""
 var _shot_frame := 24
 var _frame := 0
 var _cards: Array[Button] = []
+var _bg_mat: ShaderMaterial
+var _bg_time := 0.0
 
 
 func _ready() -> void:
 	_build()
 	_parse_shot_args()
-	resized.connect(queue_redraw)
+	resized.connect(_update_bg_aspect)
+	_update_bg_aspect()
 
 
 func _build() -> void:
+	_make_background()
+
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	margin.add_theme_constant_override("margin_left", 84)
@@ -108,17 +113,105 @@ func _build() -> void:
 	foot.text = "点击场景进入   ·   数字键 1 / 2 / 3 / 4   ·   游戏中 Esc 打开菜单"
 	foot.add_theme_font_override("font", UIStyle.font())
 	foot.add_theme_font_size_override("font_size", 17)
-	foot.add_theme_color_override("font_color", Color(0.42, 0.48, 0.50))
+	foot.add_theme_color_override("font_color", Color(0.52, 0.58, 0.60))
 	col.add_child(foot)
 
-	if not _cards.is_empty():
-		_select_card(_cards[0])
-
-	# 右侧留给 _draw() 的嵌入曲线
+	# 右侧留空，让 02 的悬链面地板/星空露出来
 	var art := Control.new()
 	art.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	art.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(art)
+
+	if not _cards.is_empty():
+		_select_card(_cards[0])
+
+
+func _make_background() -> void:
+	var bg := ColorRect.new()
+	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_bg_mat = ShaderMaterial.new()
+	_bg_mat.shader = FLOOR_SHADER
+	bg.material = _bg_mat
+	add_child(bg)
+	var cam := _bg_camera()
+	_bg_mat.set_shader_parameter("cam_pos", cam.pos)
+	_bg_mat.set_shader_parameter("cam_fwd", cam.fwd)
+	_bg_mat.set_shader_parameter("cam_right", cam.right)
+	_bg_mat.set_shader_parameter("cam_up", cam.up)
+	_bg_mat.set_shader_parameter("view_mode", 0.0)
+	_bg_mat.set_shader_parameter("throat_r", THROAT_R)
+	_bg_mat.set_shader_parameter("time_s", 0.0)
+
+	var tint := ColorRect.new()
+	tint.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	tint.color = Color(0.006, 0.010, 0.013, 0.44)
+	tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(tint)
+
+	# 左侧暗面板，保证白字可读
+	var panel := ColorRect.new()
+	panel.anchor_right = 0.565
+	panel.anchor_bottom = 1.0
+	panel.offset_left = 56.0
+	panel.offset_top = 34.0
+	panel.offset_right = 0.0
+	panel.offset_bottom = -34.0
+	panel.color = Color(0.008, 0.012, 0.014, 0.64)
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(panel)
+
+	var line := ColorRect.new()
+	line.anchor_left = 0.565
+	line.anchor_right = 0.565
+	line.anchor_bottom = 1.0
+	line.offset_left = -2.0
+	line.offset_top = 34.0
+	line.offset_right = 0.0
+	line.offset_bottom = -34.0
+	line.color = Color(0.35, 0.72, 0.93, 0.55)
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(line)
+
+
+## 2D 棋盘地板场景的相机：悬链面上方看向喉口，再向左转一点，
+## 让喉口落在右侧、左侧留给菜单文字。
+func _bg_camera() -> Dictionary:
+	var p := Vector4(11.45, 0.0, 1.6, 6.0)
+	# 与 02 场景一致：先把相机投回 Ellis 超曲面
+	for i in 3:
+		var rr := Vector3(p.x, p.y, p.z).length()
+		if rr < 1e-4:
+			break
+		var gg := Vector4(p.x / rr, p.y / rr, p.z / rr, -sinh(p.w / THROAT_R))
+		var ff := rr - THROAT_R * cosh(p.w / THROAT_R)
+		p -= gg * (ff / maxf(gg.dot(gg), 1e-6))
+	var rho := Vector3(p.x, p.y, p.z).length()
+	var n := Vector4(p.x / rho, p.y / rho, p.z / rho, -sinh(p.w / THROAT_R)).normalized()
+	var f := -p
+	f -= n * f.dot(n)
+	f = f.normalized()
+	var up := Vector4(0.0, 0.0, 1.0, 0.0)
+	up -= n * up.dot(n)
+	up -= f * up.dot(f)
+	up = up.normalized()
+	var r3 := Vector3(f.x, f.y, f.z).cross(Vector3(up.x, up.y, up.z))
+	var right := Vector4(r3.x, r3.y, r3.z, 0.0)
+	right -= n * right.dot(n)
+	right = right.normalized()
+
+	var yaw := -0.55
+	var c := cos(yaw)
+	var s := sin(yaw)
+	var f2 := (f * c + right * s).normalized()
+	var r2 := (-f * s + right * c).normalized()
+	return {"pos": p, "fwd": f2, "right": r2, "up": up}
+
+
+func _update_bg_aspect() -> void:
+	if _bg_mat == null:
+		return
+	_bg_mat.set_shader_parameter("aspect", size.x / maxf(size.y, 1.0))
 
 
 func _make_card(data: Dictionary) -> Button:
@@ -215,71 +308,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			KEY_4, KEY_KP_4: _open(String(SCENES[3].path))
 
 
-# ---- 装饰: (w, ρ) 嵌入图里的悬链线 ρ = b₀·cosh(w/b₀) ----
-
-func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), BG)
-	if size.x < 1100.0 or size.y < 560.0:
-		return
-
-	# 左侧菜单区：极淡的暗面
-	var px0 := 56.0
-	var px1 := size.x * 0.565
-	draw_rect(Rect2(px0, 34.0, px1 - px0, size.y - 68.0), Color(0.020, 0.027, 0.030, 0.52))
-	draw_rect(Rect2(px1 - 1.0, 34.0, 1.0, size.y - 68.0), Color(0.32, 0.66, 0.84, 0.55))
-
-	var x0 := size.x * 0.62
-	var x1 := size.x * 0.955
-	var y0 := size.y * 0.14
-	var y1 := size.y * 0.86
-	var w_span := 12.0
-	var rho_max := 120.0
-
-	var grid := Color(0.30, 0.40, 0.46, 0.14)
-	for i in range(-12, 13, 3):
-		var x := remap(float(i), -w_span, w_span, x0, x1)
-		draw_line(Vector2(x, y0), Vector2(x, y1), grid, 1.0)
-	for r in range(0, 121, 20):
-		var y := remap(float(r), 0.0, rho_max, y1, y0)
-		draw_line(Vector2(x0, y), Vector2(x1, y), grid, 1.0)
-
-	var axis := Color(0.36, 0.48, 0.55, 0.45)
-	draw_line(Vector2(x0, y1), Vector2(x1, y1), axis, 1.0)
-	var xc := remap(0.0, -w_span, w_span, x0, x1)
-	draw_line(Vector2(xc, y0), Vector2(xc, y1), axis, 1.0)
-
-	var pts := PackedVector2Array()
-	var n := 180
-	for i in n + 1:
-		var w := lerpf(-w_span, w_span, float(i) / float(n))
-		var rho := THROAT_R * cosh(w / THROAT_R)
-		if rho > rho_max:
-			continue
-		pts.append(Vector2(
-			remap(w, -w_span, w_span, x0, x1),
-			remap(rho, 0.0, rho_max, y1, y0)))
-	if pts.size() > 1:
-		draw_polyline(pts, Color(0.35, 0.72, 0.93, 0.05), 14.0, true)
-		draw_polyline(pts, Color(0.35, 0.72, 0.93, 0.12), 7.0, true)
-		draw_polyline(pts, Color(0.58, 0.85, 1.0, 0.90), 2.0, true)
-
-	var yt := remap(THROAT_R, 0.0, rho_max, y1, y0)
-	draw_circle(Vector2(xc, yt), 8.0, Color(0.97, 0.60, 0.20, 0.18))
-	draw_circle(Vector2(xc, yt), 3.5, Color(1.0, 0.70, 0.30, 0.95))
-
-	var font := UIStyle.font()
-	draw_string(font, Vector2(xc + 16.0, yt - 12.0), "喉口",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, UIStyle.ORANGE)
-	draw_string(font, Vector2(x1 - 18.0, y1 - 12.0), "w",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, UIStyle.MUTED)
-	draw_string(font, Vector2(xc + 12.0, y0 + 18.0), "ρ",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 17, UIStyle.MUTED)
-	draw_string(font, Vector2(x0 + 8.0, y0 + 44.0), "ρ = b₀ · cosh(w / b₀)",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.58, 0.85, 1.0, 0.72))
-	draw_string(font, Vector2(x1 - 150.0, size.y - 46.0), "BUILD 0.0.4",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 15, Color(0.34, 0.40, 0.42))
-
-
 # ---- 截图自检: --shot=<png> [--shot-frame=N] ----
 
 func _parse_shot_args() -> void:
@@ -290,7 +318,10 @@ func _parse_shot_args() -> void:
 			_shot_frame = int(a.substr(13))
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
+	if _bg_mat != null:
+		_bg_time += delta * 0.6
+		_bg_mat.set_shader_parameter("time_s", _bg_time)
 	if _shot_path == "":
 		return
 	_frame += 1

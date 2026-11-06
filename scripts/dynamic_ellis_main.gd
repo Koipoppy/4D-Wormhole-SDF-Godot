@@ -72,13 +72,14 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
+var four_axis: FourDAxis
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
 
 
 func _ready() -> void:
-	UIStyle.apply_hud(self)
+	four_axis = UIStyle.apply_hud(self)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
@@ -443,6 +444,8 @@ func _update_hud(delta: float) -> void:
 		uni = "平直空间（红）" if flat_side > 0.5 else "平直空间（蓝）"
 	var q := Vector3(pos.x - entrance_c.x, pos.y - entrance_c.y, pos.z - entrance_c.z)
 	var lift_txt := ("   h %.1f" % DIAGRAM_LIFT) if view_mode == 1 else ""
+	if four_axis != null:
+		four_axis.set_frame(pos, fwd, right, up, n_axis)
 	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   入口 C (%+.1f, %+.1f, %+.1f)   可见度 %.2f   b₀ %.2f   K₂ %+.3f   %s   %s   速度 %.1f   SS %.1fx" % [
 		MODE_NAMES[view_mode], u, pos.w, q.length(), lift_txt,
 		entrance_c.x, entrance_c.y, entrance_c.z, vis, b0, k2, state, uni, speed, ss]

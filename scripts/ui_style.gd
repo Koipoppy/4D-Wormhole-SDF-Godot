@@ -48,7 +48,7 @@ static func panel(fill: Color = PANEL, edge: Color = EDGE, border: int = 1,
 
 
 ## 场景内 HUD：状态行 / 帮助框 / 顶部提示。
-static func apply_hud(root: Node) -> void:
+static func apply_hud(root: Node) -> FourDAxis:
 	var ui := root.get_node_or_null("UILayer")
 	if ui == null:
 		return
@@ -73,6 +73,12 @@ static func apply_hud(root: Node) -> void:
 		pos.add_theme_stylebox_override("normal",
 			panel(Color(0.035, 0.045, 0.050, 0.70), EDGE, 1, false, 12, 5))
 		pos.modulate = Color.WHITE
+		pos.anchor_top = 1.0
+		pos.anchor_bottom = 1.0
+		pos.offset_left = 16.0
+		pos.offset_right = 1500.0
+		pos.offset_top = -170.0
+		pos.offset_bottom = -136.0
 
 	var help := ui.get_node_or_null("HelpLabel") as Label
 	if help != null:
@@ -81,10 +87,7 @@ static func apply_hud(root: Node) -> void:
 		help.add_theme_color_override("font_color", Color(0.82, 0.86, 0.86))
 		help.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0))
 		help.add_theme_constant_override("outline_size", 0)
-		help.add_theme_stylebox_override("normal",
-			panel(Color(0.030, 0.040, 0.045, 0.80), BLUE, 1, true, 18, 14))
-		help.offset_top = -214.0
-		help.offset_right = 1060.0
+		help.visible = false
 
 	var toast := ui.get_node_or_null("Toast") as Label
 	if toast != null:
@@ -93,6 +96,38 @@ static func apply_hud(root: Node) -> void:
 		toast.add_theme_color_override("font_color", INK)
 		toast.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.95))
 		toast.add_theme_constant_override("outline_size", 6)
+
+	# 左下角四维坐标系（朝向 + 位置）
+	var gizmo := ui.get_node_or_null("FourDAxis") as FourDAxis
+	if gizmo == null:
+		gizmo = FourDAxis.new()
+		gizmo.name = "FourDAxis"
+		gizmo.font = font()
+		gizmo.anchor_top = 1.0
+		gizmo.anchor_bottom = 1.0
+		gizmo.offset_left = 16.0
+		gizmo.offset_right = 276.0
+		gizmo.offset_top = -404.0
+		gizmo.offset_bottom = -194.0
+		ui.add_child(gizmo)
+
+	# 底部中央物品栏（虫洞枪）
+	var inv := ui.get_node_or_null("InventoryBar") as InventoryBar
+	if inv == null:
+		inv = InventoryBar.new()
+		inv.name = "InventoryBar"
+		inv.font = font()
+		inv.anchor_left = 0.5
+		inv.anchor_right = 0.5
+		inv.anchor_top = 1.0
+		inv.anchor_bottom = 1.0
+		inv.offset_left = -235.0
+		inv.offset_right = 235.0
+		inv.offset_top = -110.0
+		inv.offset_bottom = -18.0
+		ui.add_child(inv)
+
+	return gizmo
 
 
 ## 菜单/暂停菜单的列表行：普通状态透明，悬停为 Portal 2 的浅灰亮条。

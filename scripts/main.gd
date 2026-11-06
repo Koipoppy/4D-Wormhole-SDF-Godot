@@ -61,13 +61,14 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
+var four_axis: FourDAxis
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
 
 
 func _ready() -> void:
-	UIStyle.apply_hud(self)
+	four_axis = UIStyle.apply_hud(self)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
@@ -312,6 +313,8 @@ func _update_hud(delta: float) -> void:
 	var u := pos.w / THROAT_R
 	var uni := "红房间 (w>0)" if pos.w > 0.0 else "蓝房间 (w<0)"
 	var lift_txt := ("   h %.1f" % DIAGRAM_LIFT) if view_mode == 1 else ""
+	if four_axis != null:
+		four_axis.set_frame(pos, fwd, right, up, n_axis)
 	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   %s   速度 %.1f   SS %.1fx" % [
 		MODE_NAMES[view_mode], u, pos.w, Vector3(pos.x, pos.y, pos.z).length(), lift_txt, uni, speed, ss]
 	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
