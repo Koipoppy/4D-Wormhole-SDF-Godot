@@ -78,6 +78,7 @@ var frame_count := 0
 
 
 func _ready() -> void:
+	UIStyle.apply_hud(self)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
