@@ -33,7 +33,7 @@ const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 const MODE_NAMES := ["① 房间", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """虫洞沙盒 | 左键 创建/移动虫洞入口 | 右键/X 删除虫洞 | V 嵌入图 | F 超采样
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
+鼠标 转身 | WASD 移动 | Space/C 升降 | Shift+滚轮 调速 | Q/E 翻滚 | Esc 菜单
 初始空间是平直的 (b₀=0)；左键在视线前方 8m 放置入口 C:
 · b₀ 长到 3，Ellis 喉口在 C 处出现；玩家沿同一张流形连续穿过到另一个房间
 · 再次左键移动入口；右键/X 删除后 b₀→0，空间恢复到平直
@@ -70,12 +70,15 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
+var four_axis: FourDAxis
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
 
 
 func _ready() -> void:
+	four_axis = UIStyle.apply_hud(self)
+	get_viewport().size_changed.connect(_restyle_hud)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
@@ -101,6 +104,10 @@ func _ready() -> void:
 	_apply_scale()
 	help_label.text = HELP_TEXT
 	toast.text = "点击窗口捕获鼠标 → 左键在视线前方创建虫洞；右键/X 删除，空间回到平直"
+
+
+func _restyle_hud() -> void:
+	four_axis = UIStyle.apply_hud(self)
 
 
 func _parse_shot_args() -> void:
@@ -140,17 +147,15 @@ func _unhandled_input(event: InputEvent) -> void:
 			_create_or_move_wormhole()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
 			_delete_wormhole()
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.shift_pressed:
 			speed = minf(speed * 1.18, 80.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.shift_pressed:
 			speed = maxf(speed / 1.18, 1.0)
 	elif event is InputEventMouseMotion and captured:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
 		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_set_captured(false)
-		elif event.keycode == KEY_V:
+		if event.keycode == KEY_V:
 			view_mode = (view_mode + 1) % 2
 		elif event.keycode == KEY_F:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)
@@ -464,6 +469,8 @@ func _update_hud(delta: float) -> void:
 		uni = "平直空间（红）" if flat_side > 0.5 else "平直空间（蓝）"
 	var q := Vector3(pos.x - entrance_c.x, pos.y - entrance_c.y, pos.z - entrance_c.z)
 	var lift_txt := ("   h %.1f" % DIAGRAM_LIFT) if view_mode == 1 else ""
+	if four_axis != null:
+		four_axis.set_frame(pos, fwd, right, up, n_axis)
 	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   入口 C (%+.1f, %+.1f, %+.1f)   b₀ %.2f   K₂ %+.3f   %s   %s   速度 %.1f   SS %.1fx" % [
 		MODE_NAMES[view_mode], u, pos.w, q.length(), lift_txt,
 		entrance_c.x, entrance_c.y, entrance_c.z, b0, k2, state, uni, speed, ss]

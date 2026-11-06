@@ -25,7 +25,7 @@ const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 const MODE_NAMES := ["① 房间", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """V 嵌入图 (w,ρ) — 虫洞悬浮在方格平面上方 | F 超采样
-鼠标 转身 | WASD 移动 | Space/C 升降 | 滚轮 调速 | Q/E 翻滚 | Esc 释放鼠标
+鼠标 转身 | WASD 移动 | Space/C 升降 | Shift+滚轮 调速 | Q/E 翻滚 | Esc 菜单
 你在一蓝一红两个立方体房间之一，房间中心的球体就是 Ellis 虫洞入口:
 · 走进中心虫洞 → 穿过喉口 → 从另一个房间的中心出来（w>0 红 / w<0 蓝）
 · 房间墙是方格纹理；光线依旧沿 Ellis 度规的测地线传播
@@ -61,12 +61,15 @@ var frame_count := 0
 @onready var sub: SubViewport = $SubViewport
 @onready var screen: TextureRect = $UILayer/Screen
 @onready var mat: ShaderMaterial = $SubViewport/View.material
+var four_axis: FourDAxis
 @onready var pos_label: Label = $UILayer/PosLabel
 @onready var help_label: Label = $UILayer/HelpLabel
 @onready var toast: Label = $UILayer/Toast
 
 
 func _ready() -> void:
+	four_axis = UIStyle.apply_hud(self)
+	get_viewport().size_changed.connect(_restyle_hud)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
 	_parse_shot_args()
@@ -86,6 +89,10 @@ func _ready() -> void:
 	_apply_scale()
 	help_label.text = HELP_TEXT
 	toast.text = "点击窗口捕获鼠标 → 走进房间中心的虫洞 = 到达另一个房间"
+
+
+func _restyle_hud() -> void:
+	four_axis = UIStyle.apply_hud(self)
 
 
 func _parse_shot_args() -> void:
@@ -119,17 +126,15 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed:
 		if not captured:
 			_set_captured(true)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.shift_pressed:
 			speed = minf(speed * 1.18, 80.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.shift_pressed:
 			speed = maxf(speed / 1.18, 1.0)
 	elif event is InputEventMouseMotion and captured:
 		_rot_pair(1, 2, event.relative.x * mouse_sens)    # 偏航: 右移右转
 		_rot_pair(1, 3, -event.relative.y * mouse_sens)   # 俯仰: 下移下视
 	elif event is InputEventKey and event.pressed and not event.echo:
-		if event.keycode == KEY_ESCAPE:
-			_set_captured(false)
-		elif event.keycode == KEY_V:
+		if event.keycode == KEY_V:
 			view_mode = (view_mode + 1) % 2
 		elif event.keycode == KEY_F:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)
@@ -313,6 +318,8 @@ func _update_hud(delta: float) -> void:
 	var u := pos.w / THROAT_R
 	var uni := "红房间 (w>0)" if pos.w > 0.0 else "蓝房间 (w<0)"
 	var lift_txt := ("   h %.1f" % DIAGRAM_LIFT) if view_mode == 1 else ""
+	if four_axis != null:
+		four_axis.set_frame(pos, fwd, right, up, n_axis)
 	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   %s   速度 %.1f   SS %.1fx" % [
 		MODE_NAMES[view_mode], u, pos.w, Vector3(pos.x, pos.y, pos.z).length(), lift_txt, uni, speed, ss]
 	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
