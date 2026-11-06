@@ -26,6 +26,11 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | [optozorax《虫洞在现实中看起来会是什么样？》(BV1Q8HP69EQh)](https://www.bilibili.com/video/BV1Q8HP69EQh/) | 测地线光线步进、穿喉连续、多重像 | 测地线约束积分器逐像素渲染；飞过喉口连续到达另一宇宙；喉口边缘的多重像 |
 | [wxyhly《四维世界（一）》](https://wxyhly-en.github.io/archives/orbit4d/) | 4D 空间的转动与几何直觉 | 整个世界 4D 欧氏嵌入：弯曲空间是 4D 中的超曲面，相机标架是 4D 正交标架 |
 
+## 背景音乐
+
+- `music/vltava.ogg`：Smetana《我的祖国》第二首《伏尔塔瓦河》，Bavarian Radio Symphony Orchestra。
+- 常驻 Autoload `Music` 循环播放，跨场景切换与暂停菜单都不中断。
+
 ## 运行 / 构建
 
 - Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）；`./build.sh "…Godot.exe"` 出单文件 exe 到**项目根目录**。

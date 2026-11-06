@@ -13,6 +13,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 SceneRouter="*res://scripts/scene_router.gd"
+Music="*res://scripts/music.gd"
 
 [display]
 
