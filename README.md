@@ -28,8 +28,19 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 
 ## 运行 / 构建
 
-- Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）；`./build.sh "…Godot.exe"` 出单文件 exe。
+- Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）；`./build.sh "…Godot.exe"` 出单文件 exe 到**项目根目录**。
+- 启动后进入**场景选择页**，再进入具体场景。
 - 截图验证：`Godot.exe --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-yaw=deg] [--shot-pitch=deg] [--shot-mode=0|1] [--ss=1.5]`
+  指定其他场景：`Godot.exe --path . res://scenes/floor_2dchecker.tscn -- --shot=…`
+
+## 场景选择
+
+| 场景 | 文件 | 说明 |
+|---|---|---|
+| 01 双房间虫洞 | `scenes/main.tscn` | Ellis 超曲面 · 红/蓝立方体房间 · 中心喉口 |
+| 02 悬链面棋盘地板 | `scenes/floor_2dchecker.tscn` | 从 `4D-002-2dchecker` worktree 导入（tag 0.0.2 + 2D checker 改动）· 2D 棋盘地板 + 双宇宙星空 |
+
+菜单里点击卡片或按 `1/2` 进入；游戏中按 `M` 或点右上角"场景选择"返回。
 
 ## 操作
 
@@ -39,6 +50,7 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | Q / E | 翻滚 |
 | **V** | 视图：① 第一人称 ② 嵌入图 (w, ρ)——虫洞曲线悬浮在方格平面上方，虚线/竖线为平面投影 |
 | **F** | 超采样 1.0× / 1.5× / 2.0×（SubViewport SSAA） |
+| **M** | 返回场景选择菜单（右上角按钮同效） |
 
 ## 原理
 
@@ -68,15 +80,25 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 ```
 project.godot               工程配置；run/main_scene = exe 入口场景
 export_presets.cfg          Windows 导出预设（x86_64、嵌入 PCK）
-build.sh / build.bat        一键构建
+build.sh / build.bat        一键构建（输出到根目录）
+4DWormholeEngine.exe        构建产物（根目录）
 scenes/main.tscn            SubViewport（超采样）+ 全屏着色器 + HUD
+scenes/menu.tscn            场景选择页入口
+scenes/floor_2dchecker.tscn 4D-002-2dchecker 导入场景（悬链面棋盘地板）
 scripts/main.gd             超曲面约束相机、房间边界/喉口、嵌入图、截图自检
+scripts/menu.gd             场景选择页（卡片 + 1/2/3 快捷键 + 装饰嵌入曲线）
+scripts/scene_router.gd     常驻返回菜单按钮 + M 快捷键
+scripts/floor_2dchecker.gd  导入场景的相机/地板/HUD
 shaders/wormhole4d.gdshader  超曲面投影、测地线积分器、双房间、嵌入图
+shaders/floor_2dchecker.gdshader  悬链面地板（2D checker）、星空、嵌入图
 icon.svg
 ```
 
 ## 已验证（Godot 4.7.1 实机 + 截图目检）
 
+- `build/menu.png`：场景选择页（三张卡片 + (w,ρ) 嵌入曲线装饰）；
+- `build/check_main.png`：双房间场景，红房间中心蓝色喉口；
+- `build/check_floor.png`：4D-002 的 2D 棋盘悬链面地板；
 - `build/rooms.png`：红房间（w>0），中心蓝色喉口看到另一侧的蓝房间；
 - `build/rooms-blue.png`：蓝房间（w<0），中心红色喉口看到另一侧的红房间；
 - `build/diagram-clean.png`：嵌入图 (w,ρ)——悬浮曲线、平面投影与高度尺。

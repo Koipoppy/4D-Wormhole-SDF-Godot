@@ -42,8 +42,7 @@ echo "== 导入资源 =="
 "$GODOT" --headless --path . --import
 
 # ---- 导出 ----
-echo "== 导出 Windows x86_64 (嵌入 PCK, 单文件) =="
-mkdir -p build
-"$GODOT" --headless --path . --export-release "Windows Desktop" build/4DWormholeEngine.exe
+echo "== 导出 Windows x86_64 (嵌入 PCK, 单文件, 输出到项目根目录) =="
+"$GODOT" --headless --path . --export-release "Windows Desktop" 4DWormholeEngine.exe
 
-echo "完成: build/4DWormholeEngine.exe (控制台版: build/4DWormholeEngine_console.exe)"
+echo "完成: 4DWormholeEngine.exe"

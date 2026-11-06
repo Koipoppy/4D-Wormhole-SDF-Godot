@@ -6,9 +6,13 @@ config_version=5
 [application]
 
 config/name="4D SDF 虫洞引擎"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/menu.tscn"
 config/features=PackedStringArray("4.3")
 config/icon="res://icon.svg"
+
+[autoload]
+
+SceneRouter="*res://scripts/scene_router.gd"
 
 [display]
 

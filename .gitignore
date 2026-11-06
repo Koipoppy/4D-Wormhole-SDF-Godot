@@ -3,6 +3,9 @@
 build/
 *.tmp
 
+# build entry (project root)
+/4DWormholeEngine*.exe
+
 # local demo/video artifacts
 wormhole-video/
 wormhole-teardown-2k.mp4

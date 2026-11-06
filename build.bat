@@ -23,11 +23,10 @@ echo == Godot: %GODOT% ==
 echo == Importing resources ==
 "%GODOT%" --headless --path . --import || goto :fail
 
-echo == Exporting Windows x86_64 (single-file exe, embedded PCK) ==
-if not exist build mkdir build
-"%GODOT%" --headless --path . --export-release "Windows Desktop" build\4DWormholeEngine.exe || goto :fail
+echo == Exporting Windows x86_64 (single-file exe, embedded PCK, output to project root) ==
+"%GODOT%" --headless --path . --export-release "Windows Desktop" 4DWormholeEngine.exe || goto :fail
 
-echo Done: build\4DWormholeEngine.exe
+echo Done: 4DWormholeEngine.exe
 exit /b 0
 
 :fail
