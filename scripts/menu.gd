@@ -1,7 +1,7 @@
 extends Control
 ## 场景选择页面：游戏启动后的入口。
 ##
-## 场景列表在 SCENES 里维护；点击卡片或按 1/2 进入。
+## 场景列表在 SCENES 里维护；点击卡片或按 1/2/3 进入。
 ## 背景画的是 Ellis 虫洞的 (w, ρ) 嵌入曲线，纯装饰。
 
 const SCENES := [
@@ -16,6 +16,18 @@ const SCENES := [
 		"title": "悬链面棋盘地板",
 		"desc": "4D-002 · 2D 棋盘地板 + 双宇宙星空",
 		"path": "res://scenes/floor_2dchecker.tscn",
+	},
+	{
+		"tag": "03",
+		"title": "薄壳动态虫洞",
+		"desc": "可移动球口对 · 准静态动态度规",
+		"path": "res://scenes/thinshell.tscn",
+	},
+	{
+		"tag": "04",
+		"title": "动态 Ellis 虫洞",
+		"desc": "入口移动 · 周期性隐去 · 隐去时入口消失、空间平直",
+		"path": "res://scenes/dynamic_ellis.tscn",
 	},
 ]
 
@@ -89,7 +101,7 @@ func _build() -> void:
 	col.add_child(flex)
 
 	var foot := Label.new()
-	foot.text = "点击场景进入  ·  数字键 1 / 2 快捷选择  ·  游戏中 M 或右上角按钮返回"
+	foot.text = "点击场景进入  ·  数字键 1 / 2 / 3 / 4 快捷选择  ·  游戏中 M 或右上角按钮返回"
 	foot.add_theme_font_size_override("font_size", 13)
 	foot.add_theme_color_override("font_color", Color(0.42, 0.48, 0.6))
 	col.add_child(foot)
@@ -143,6 +155,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_1, KEY_KP_1: _open(String(SCENES[0].path))
 			KEY_2, KEY_KP_2: _open(String(SCENES[1].path))
+			KEY_3, KEY_KP_3: _open(String(SCENES[2].path))
+			KEY_4, KEY_KP_4: _open(String(SCENES[3].path))
 
 
 # ---- 装饰: (w, ρ) 嵌入图里的悬链线 ρ = b₀·cosh(w/b₀) ----
