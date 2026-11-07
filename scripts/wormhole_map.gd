@@ -121,8 +121,6 @@ func _ready() -> void:
 	if shot_ss > 0.0:
 		ss = shot_ss
 	_apply_scale()
-	if "--wormhole-demo" in OS.get_cmdline_user_args():
-		_create_or_move_wormhole()
 	if "--portal-demo-triple" in OS.get_cmdline_user_args():
 		_setup_portal_demo_triple()
 	elif "--portal-demo-mobius" in OS.get_cmdline_user_args():
@@ -559,25 +557,24 @@ func _push_portal_uniforms() -> void:
 func _check_portal_teleport(prev: Vector4, now: Vector4) -> void:
 	if not _portals_active():
 		return
+	var p0 := Vector3(prev.x, prev.y, prev.z)
 	var p1 := Vector3(now.x, now.y, now.z)
-	var vel3 := Vector3(vel.x, vel.y, vel.z)
-	if vel3.length_squared() < 0.000001:
+	var move := p1 - p0
+	if move.length_squared() < 0.000001:
 		return
-	vel3 = vel3.normalized()
 	for i in portal_slots.size():
 		var r: Dictionary = portal_slots[i]
 		var c: Vector3 = r.center
 		var n: Vector3 = r.normal
+		var d0 := (p0 - c).dot(n)
 		var d1 := (p1 - c).dot(n)
-		# 允许玩家被碰撞夹在门面 4 cm 处时继续按住前进也能穿过去；
-		# 不再要求“距离这一帧必须变小”。
-		if d1 <= 0.0 or d1 > 0.08:
+		if d0 <= 0.0 or d1 >= d0 or d1 > 0.06:
 			continue
 		var rel := p1 - c
 		var lat := rel - n * rel.dot(n)
 		if lat.length() > float(r.radius) * 0.95:
 			continue
-		if vel3.dot(n) >= -0.05:
+		if move.normalized().dot(n) >= -0.05:
 			continue
 		_teleport_player(i)
 		return
@@ -611,7 +608,7 @@ func _teleport_player(i: int) -> void:
 	vel -= n_axis * vel.dot(n_axis)
 	if vel.length_squared() > 0.000001:
 		vel = vel.normalized() * speed_now
-	portal_cooldown = 0.2
+	portal_cooldown = 0.8
 	_flash("穿过 %s" % TOOL_NAMES[tool])
 
 
@@ -822,6 +819,13 @@ func _process(delta: float) -> void:
 	b0 = lerpf(b0, b0_target, 1.0 - exp(-3.0 * delta))
 	if b0 < FLAT_EPS and prev_b0 >= FLAT_EPS:
 		flat_side = 1.0 if pos.w >= 0.0 else 0.0
+	# 第一次穿喉时 b0 往往还在缓慢长大。只要玩家已经贴近喉口，就直接
+	# 完成这次生长；否则 _snap_player_to_surface 会每帧把玩家按回 w=0
+	# 的喉口球，表现为在喉口卡一小会（之后 b0 稳定就不会再出现）。
+	if b0_target > FLAT_EPS and b0 < b0_target:
+		var rho_now := Vector3(pos.x - entrance_c.x, pos.y - entrance_c.y, pos.z - entrance_c.z).length()
+		if rho_now < b0 + 2.0:
+			b0 = b0_target
 	if absf(b0 - prev_b0) > 0.00001:
 		_snap_player_to_surface()
 		var nn := surf_normal(pos)
