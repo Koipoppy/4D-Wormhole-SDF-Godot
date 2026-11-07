@@ -568,7 +568,7 @@ func _check_portal_teleport(prev: Vector4, now: Vector4) -> void:
 		var n: Vector3 = r.normal
 		var d0 := (p0 - c).dot(n)
 		var d1 := (p1 - c).dot(n)
-		if d0 <= 0.0 or d1 >= d0 or d1 > 1.0:
+		if d0 <= 0.0 or d1 >= d0 or d1 > 0.06:
 			continue
 		var rel := p1 - c
 		var lat := rel - n * rel.dot(n)
@@ -587,19 +587,27 @@ func _teleport_player(i: int) -> void:
 	var rel := p1 - Vector3(entry.center)
 	var lx := rel.dot(Vector3(entry.right))
 	var ly := rel.dot(Vector3(entry.up))
+	var lz := rel.dot(Vector3(entry.normal))
 	var roll: float = entry.roll
 	var cr := cos(roll)
 	var sr := sin(roll)
 	var rx := -lx * cr - ly * sr
 	var ry := -lx * sr + ly * cr
-	var np: Vector3 = Vector3(exit.center) + Vector3(exit.right) * rx + Vector3(exit.up) * ry + Vector3(exit.normal) * 0.55
+	# 把入口相机所在的位置完整映射到出口，再加法线与着色器一致的 0.10 m。
+	# 这样传送后的相机就是门内画面所用的虚拟相机，视角不会跳。
+	var rz := -lz + 0.10
+	var np: Vector3 = Vector3(exit.center) + Vector3(exit.right) * rx + Vector3(exit.up) * ry + Vector3(exit.normal) * rz
 	pos = surf_project(Vector4(np.x, np.y, np.z, pos.w))
+	var speed_now := vel.length()
 	fwd = _portal_dir(fwd, entry, exit, roll)
 	right = _portal_dir(right, entry, exit, roll)
 	up = _portal_dir(up, entry, exit, roll)
 	n_axis = surf_normal(pos)
 	_make_ortho()
-	vel = Vector4.ZERO
+	vel = _portal_dir(vel, entry, exit, roll)
+	vel -= n_axis * vel.dot(n_axis)
+	if vel.length_squared() > 0.000001:
+		vel = vel.normalized() * speed_now
 	portal_cooldown = 0.8
 	_flash("穿过 %s" % TOOL_NAMES[tool])
 
@@ -843,21 +851,26 @@ func _process(delta: float) -> void:
 	pos += vel * delta
 
 	# ---- 立方体房间边界 ----
-	var lim := ROOM_L - 0.8
+	# 传送门模式下把碰撞余量压到 4 cm，让玩家能贴到门面再穿过去；
+	# 正常的虫洞模式仍保留 0.8 m 的舒适距离。
+	var portal_mode := tool != 2 and _portals_active()
+	var margin := 0.04 if portal_mode else 0.8
+	var lim := ROOM_L - margin
 	pos.x = clampf(pos.x, ROOM_C.x - lim, ROOM_C.x + lim)
 	pos.y = clampf(pos.y, ROOM_C.y - lim, ROOM_C.y + lim)
 	pos.z = clampf(pos.z, ROOM_C.z - lim, ROOM_C.z + lim)
 
 	# ---- 平台/柱子碰撞 ----
+	var bmargin := 0.04 if portal_mode else 0.35
 	var d1 := box_sdf(pos, OBS1_C, OBS1_H)
-	if d1 < 0.35:
-		pos += box_normal(pos, OBS1_C, OBS1_H) * (0.35 - d1)
+	if d1 < bmargin:
+		pos += box_normal(pos, OBS1_C, OBS1_H) * (bmargin - d1)
 	var d2 := box_sdf(pos, OBS2_C, OBS2_H)
-	if d2 < 0.35:
-		pos += box_normal(pos, OBS2_C, OBS2_H) * (0.35 - d2)
+	if d2 < bmargin:
+		pos += box_normal(pos, OBS2_C, OBS2_H) * (bmargin - d2)
 	var d3 := box_sdf(pos, OBS3_C, OBS3_H)
-	if d3 < 0.35:
-		pos += box_normal(pos, OBS3_C, OBS3_H) * (0.35 - d3)
+	if d3 < bmargin:
+		pos += box_normal(pos, OBS3_C, OBS3_H) * (bmargin - d3)
 
 	if tool != 2 and portal_cooldown <= 0.0 and _portals_active():
 		_check_portal_teleport(prev, pos)
