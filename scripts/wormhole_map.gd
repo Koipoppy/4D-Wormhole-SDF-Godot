@@ -26,8 +26,8 @@ const OBS1_C := Vector3(26.0, 8.0, -11.0)
 const OBS1_H := Vector3(4.0, 4.0, 3.0)
 const OBS2_C := Vector3(14.0, -8.0, -11.0)
 const OBS2_H := Vector3(4.0, 4.0, 3.0)
-const OBS3_C := Vector3(20.0, 0.0, -6.0)
-const OBS3_H := Vector3(1.6, 1.6, 8.0)
+const OBS3_C := Vector3(20.0, 0.0, -10.0)
+const OBS3_H := Vector3(1.6, 1.6, 4.0)
 const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 
 # ---- 传送门物品（参照 optozorax/portal 的经典门 / 三重门 / 莫比乌斯门）----
@@ -121,6 +121,8 @@ func _ready() -> void:
 	if shot_ss > 0.0:
 		ss = shot_ss
 	_apply_scale()
+	if "--wormhole-demo" in OS.get_cmdline_user_args():
+		_create_or_move_wormhole()
 	if "--portal-demo-triple" in OS.get_cmdline_user_args():
 		_setup_portal_demo_triple()
 	elif "--portal-demo-mobius" in OS.get_cmdline_user_args():
@@ -265,10 +267,55 @@ func _aim_point() -> Vector3:
 
 
 func _create_or_move_wormhole() -> void:
-	entrance_c = _aim_point()
+	var aim := _aim_point()
+	var safe := _safe_entrance(aim)
+	entrance_c = safe
 	created = true
 	b0_target = B0
-	_flash("虫洞已创建 / 入口已移动")
+	if safe.distance_to(aim) > 0.05:
+		_flash("入口已避开障碍物")
+	else:
+		_flash("虫洞已创建 / 入口已移动")
+
+
+## 保证喉口球 (半径 b0) 不和平台/柱子/墙体重叠，否则玩家穿喉时会被
+## 实体碰撞推住，出现“在喉口卡一下”。
+func _safe_entrance(p: Vector3) -> Vector3:
+	var clearance := B0 + 0.6
+	for iteration in 4:
+		var moved := false
+		for b in [[OBS1_C, OBS1_H], [OBS2_C, OBS2_H], [OBS3_C, OBS3_H]]:
+			var c: Vector3 = b[0]
+			var h: Vector3 = b[1]
+			var q := Vector3(
+				clampf(p.x, c.x - h.x, c.x + h.x),
+				clampf(p.y, c.y - h.y, c.y + h.y),
+				clampf(p.z, c.z - h.z, c.z + h.z))
+			var d := p - q
+			if d.length() >= clearance:
+				continue
+			if d.length_squared() < 0.000001:
+				# 入口落在障碍物内部：沿最近的面推出去
+				var px := h.x - absf(p.x - c.x)
+				var py := h.y - absf(p.y - c.y)
+				var pz := h.z - absf(p.z - c.z)
+				if px <= py and px <= pz:
+					p.x = c.x + signf(p.x - c.x) * (h.x + clearance)
+				elif py <= pz:
+					p.y = c.y + signf(p.y - c.y) * (h.y + clearance)
+				else:
+					p.z = c.z + signf(p.z - c.z) * (h.z + clearance)
+			else:
+				p = q + d.normalized() * clearance
+			moved = true
+		# 也留出到房间墙体的喉口半径
+		var wc := 3.2
+		p.x = clampf(p.x, ROOM_C.x - (ROOM_L - wc), ROOM_C.x + (ROOM_L - wc))
+		p.y = clampf(p.y, ROOM_C.y - (ROOM_L - wc), ROOM_C.y + (ROOM_L - wc))
+		p.z = clampf(p.z, ROOM_C.z - (ROOM_L - wc), ROOM_C.z + (ROOM_L - wc))
+		if not moved:
+			break
+	return p
 
 
 func _delete_wormhole() -> void:
