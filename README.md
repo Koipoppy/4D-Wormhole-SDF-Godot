@@ -26,23 +26,28 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | [optozorax《虫洞在现实中看起来会是什么样？》(BV1Q8HP69EQh)](https://www.bilibili.com/video/BV1Q8HP69EQh/) | 测地线光线步进、穿喉连续、多重像 | 测地线约束积分器逐像素渲染；飞过喉口连续到达另一宇宙；喉口边缘的多重像 |
 | [wxyhly《四维世界（一）》](https://wxyhly-en.github.io/archives/orbit4d/) | 4D 空间的转动与几何直觉 | 整个世界 4D 欧氏嵌入：弯曲空间是 4D 中的超曲面，相机标架是 4D 正交标架 |
 
+## 背景音乐
+
+- `music/vltava.ogg`：Smetana《我的祖国》第二首《伏尔塔瓦河》，Bavarian Radio Symphony Orchestra。
+- 常驻 Autoload `Music` 循环播放，跨场景切换与暂停菜单都不中断。
+
 ## 运行 / 构建
 
 - Godot 4.3+ 导入 `project.godot`，F5（本机 4.7.1 已验证）；`./build.sh "…Godot.exe"` 出单文件 exe 到**项目根目录**。
-- 启动后进入**场景选择页**，再进入具体场景。
+- 启动后进入主菜单：**虫洞沙盒** / **演示场景** 两个入口；演示页里再选三个实验。
 - 截图验证：`Godot.exe --path . -- --shot=<png> [--shot-pos=x,y,z,w] [--shot-yaw=deg] [--shot-pitch=deg] [--shot-mode=0|1] [--ss=1.5]`
   指定其他场景：`Godot.exe --path . res://scenes/floor_2dchecker.tscn -- --shot=…`
 
 ## 场景选择
 
-| 场景 | 文件 | 说明 |
+| 入口 | 文件 | 说明 |
 |---|---|---|
-| 01 双房间虫洞 | `scenes/main.tscn` | Ellis 超曲面 · 红/蓝立方体房间 · 中心喉口 |
-| 02 悬链面棋盘地板 | `scenes/floor_2dchecker.tscn` | 从 `4D-002-2dchecker` worktree 导入（tag 0.0.2 + 2D checker 改动）· 2D 棋盘地板 + 双宇宙星空 |
-| 03 虫洞沙盒 | `scenes/wormhole_map.tscn` | 平台/柱子沙盒 · 动态 Ellis 喉口 · 左键创建/删除 |
-| 04 动态 Ellis 虫洞 | `scenes/dynamic_ellis.tscn` | 入口移动 + 周期性隐去；隐去时入口完全消失、空间平直，房间颜色保留 |
+| 虫洞沙盒 | `scenes/wormhole_map.tscn` | 平台/柱子沙盒 · 虫洞枪 + 经典/三重/莫比乌斯传送门 |
+| 演示场景 · 双房间虫洞 | `scenes/main.tscn` | Ellis 超曲面 · 红/蓝立方体房间 · 中心喉口 |
+| 演示场景 · 悬链面棋盘地板 | `scenes/floor_2dchecker.tscn` | 从 `4D-002-2dchecker` worktree 导入（tag 0.0.2 + 2D checker 改动）· 2D 棋盘地板 + 双宇宙星空 |
+| 演示场景 · 动态 Ellis 虫洞 | `scenes/dynamic_ellis.tscn` | 入口移动 + 周期性隐去；隐去时入口完全消失、空间平直，房间颜色保留 |
 
-菜单里点击场景行或按 `1/2/3/4` 进入；游戏中按 `Esc`（或 `M`）打开 Portal 2 风格的暂停菜单，场景选择已合并其中。
+主菜单只有两个入口；点“演示场景”进入子页选三个实验，`Esc` / 返回 回到上一层。游戏中按 `Esc`（或 `M`）打开 Portal 2 风格的暂停菜单，场景选择无编号。
 
 ## 操作
 
@@ -55,10 +60,10 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 | **F** | 超采样 1.0× / 1.5× / 2.0×（SubViewport SSAA） |
 | **Esc / M** | 打开暂停菜单（继续 / 场景选择 / 回到主菜单 / 退出） |
 
-## 虫洞沙盒地图（03）
+## 虫洞沙盒地图
 
 `scenes/wormhole_map.tscn` 是你新做的沙盒环境：约 28 m 的 Ellis 房间、两块平台和
-一根中央柱；虫洞创建沿用 **04 的动态 Ellis**，不是 03 的球口/portal。
+一根中央柱；虫洞创建沿用动态 Ellis，不是旧版球口/portal。
 
 | 按键 | 作用 |
 |---|---|
@@ -70,6 +75,7 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
 模型说明：
 
 - 初始 `b₀=0`：空间是平直平面 `w=0`，但保留你所在侧的红/蓝房间颜色。
+- 第一次穿喉时如果 `b₀` 还在生长，玩家贴近喉口会直接完成这次生长，避免被曲面投影按在 `w=0` 处。
 - 左键后 `b₀` 从 0 平滑长到 3，Ellis 喉口在 `C` 处出现；剖面仍是
   `ρ=b₀·cosh(w/b₀)`，光线沿瞬时 Ellis 测地线传播。
 - 再次左键移动入口；右键/X 删除后回到平直。入口移动/消失不会把玩家拖向喉口
@@ -79,7 +85,28 @@ P(u, θ, φ) = ( b₀·u ,  b₀·cosh(u)·n̂(θ,φ) )    n̂ ∈ S² ⊂ ℝ³
   量化出现同心条带。
 - 限制：`b₀=0` 是 GR pinch-off 极限，不是完整 4D Einstein 解；目前一次一个虫洞。
 
-## 动态 Ellis 虫洞（04）
+## 传送门物品
+
+参考 [optozorax/portal](https://github.com/optozorax/portal) 的 Portal Explorer：
+
+| 物品（数字键） | 放置 | 行为 |
+|---|---|---|
+| 1 经典双门 | 左键 A / 右键 B | A、B 互通，射线与玩家原样穿越 |
+| 2 三重门 | 左键依次 A→B→C | A→B→C→A 循环；右键清空 |
+| 3 虫洞枪 | 左键 | 原来的动态 Ellis 虫洞 |
+| 4 莫比乌斯门 | 左键 A / 右键 B | 出门绕法线滚转 180°，玩家上下翻转 |
+| 5 预留 | — | 后续物品 |
+
+规则与限制：
+
+- 选中物品时清空上一件物品留下的门；选虫洞枪时删除 Ellis 虫洞，选传送门时删除虫洞。
+- 传送门只放在房间墙/平台表面；半径 1.25 m；射线最多连续穿 3 次。
+- 传送门只在虫洞沙盒的平直空间中工作；演示场景选择这些物品会提示仅沙盒可用。
+- 已实现经典门、三重门、莫比乌斯门；monoportal、缩放门、portal-in-portal 尚未实现。
+- 玩家贴到门面（约 6 cm）才触发传送；出口相机与门内画面使用的虚拟相机严格一致，并保留穿门前的速度。
+- 传送门模式下墙/平台碰撞余量缩到 4 cm，避免出口位置被碰撞推开导致画面跳变。
+
+## 动态 Ellis 虫洞
 
 `scenes/dynamic_ellis.tscn` 让 Ellis 虫洞**移动并周期性消失/出现**：
 
@@ -143,7 +170,7 @@ scenes/floor_2dchecker.tscn 4D-002-2dchecker 导入场景（悬链面棋盘地�
 scenes/wormhole_map.tscn    虫洞沙盒地图（大地图 + 平台/柱子，鼠标创建虫洞）
 scenes/dynamic_ellis.tscn   动态 Ellis 虫洞（入口移动 + 周期性显隐）
 scripts/main.gd             超曲面约束相机、房间边界/喉口、嵌入图、截图自检
-scripts/menu.gd             场景选择页（卡片 + 1/2/3/4 快捷键 + 装饰嵌入曲线）
+scripts/menu.gd             主菜单（虫洞沙盒 / 演示场景两入口 + 演示子页）
 scripts/scene_router.gd     Portal 2 暂停菜单 + Esc/M，场景选择已合并
 scripts/floor_2dchecker.gd  导入场景的相机/地板/HUD
 scripts/wormhole_map.gd     虫洞沙盒：地图 SDF、鼠标放置、口对生命周期
@@ -157,9 +184,14 @@ icon.svg
 
 ## 已验证（Godot 4.7.1 实机 + 截图目检）
 
-- `build/menu.png`：Portal 2 / Aperture 风格场景选择页，背景为 02 的悬链面地板 + 星空；
+- `build/menu.png`：两个入口的主菜单（虫洞沙盒 / 演示场景）；
+- `build/menu_demos.png`：演示场景子页（双房间 / 棋盘地板 / 动态 Ellis）；
 - `build/pause_menu.png`：画面中央的半透明 Esc 暂停菜单（继续 / 场景选择 / 回主菜单 / 退出）；
 - `build/ui_map.png`：游戏内 HUD（左下 4D 坐标系 + 中央虫洞枪物品栏）；
+- `build/portal_demo.png`：经典双门（蓝/橙）与出口画面；
+- `build/portal_triple.png`：三重门（A→B→C→A）；
+- `build/portal_mobius.png`：莫比乌斯门（出口画面滚转 180°）；
+- `build/portal_hotbar.png`：五格物品栏中的经典门 / 三重门 / 虫洞枪 / 莫比乌斯门图标。
 - `build/check_main.png`：双房间场景，红房间中心蓝色喉口；
 - `build/check_floor.png`：4D-002 的 2D 棋盘悬链面地板；
 - `build/map_empty.png`：虫洞沙盒空地图（房间 + 平台 + 中央柱，2 m 三维格点）；

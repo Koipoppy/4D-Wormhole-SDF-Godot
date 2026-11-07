@@ -8,10 +8,10 @@ extends CanvasLayer
 const MENU_SCENE := "res://scenes/menu.tscn"
 
 const SCENES := [
-	{"tag": "01", "title": "双房间虫洞", "path": "res://scenes/main.tscn"},
-	{"tag": "02", "title": "悬链面棋盘地板", "path": "res://scenes/floor_2dchecker.tscn"},
-	{"tag": "03", "title": "虫洞沙盒", "path": "res://scenes/wormhole_map.tscn"},
-	{"tag": "04", "title": "动态 Ellis 虫洞", "path": "res://scenes/dynamic_ellis.tscn"},
+	{"title": "虫洞沙盒", "path": "res://scenes/wormhole_map.tscn"},
+	{"title": "双房间虫洞", "path": "res://scenes/main.tscn"},
+	{"title": "悬链面棋盘地板", "path": "res://scenes/floor_2dchecker.tscn"},
+	{"title": "动态 Ellis 虫洞", "path": "res://scenes/dynamic_ellis.tscn"},
 ]
 
 var _root: Control
@@ -87,7 +87,7 @@ func _build() -> void:
 	panel.add_child(v)
 
 	var kicker := Label.new()
-	kicker.text = "APERTURE SCIENCE   //   TEST TRACK 04"
+	kicker.text = "APERTURE SCIENCE   //   PORTAL TESTING"
 	kicker.add_theme_font_override("font", UIStyle.font())
 	kicker.add_theme_font_size_override("font_size", int(round(14.0 * _k)))
 	kicker.add_theme_color_override("font_color", UIStyle.BLUE)
@@ -123,7 +123,7 @@ func _build() -> void:
 	v.add_child(section)
 
 	for data in SCENES:
-		_add_row(v, String(data.tag), String(data.title),
+		_add_row(v, "", String(data.title),
 			_open_scene.bind(String(data.path)))
 
 	var flex := Control.new()

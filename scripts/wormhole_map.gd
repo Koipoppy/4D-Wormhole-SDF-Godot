@@ -30,6 +30,22 @@ const OBS3_C := Vector3(20.0, 0.0, -6.0)
 const OBS3_H := Vector3(1.6, 1.6, 8.0)
 const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 
+# ---- 传送门物品（参照 optozorax/portal 的经典门 / 三重门 / 莫比乌斯门）----
+const PORTAL_R := 1.25
+const TOOL_NAMES := ["经典双门", "三重门", "虫洞枪", "莫比乌斯门", "预留"]
+const PORTAL_COLORS := [
+	[Color(0.35, 0.72, 0.93), Color(0.97, 0.60, 0.20)],
+	[Color(0.35, 0.72, 0.93), Color(0.97, 0.60, 0.20), Color(0.55, 0.86, 0.60)],
+	[],
+	[Color(0.72, 0.55, 1.0), Color(0.55, 0.90, 1.0)],
+	[],
+]
+var tool := 2                  # 当前物品；2 = 原来的虫洞枪
+var portal_slots: Array = []   # 当前工具的门口；Dictionary 或 null
+var triple_next := 0
+var portal_cooldown := 0.0
+var inv: InventoryBar
+
 const MODE_NAMES := ["① 房间", "② 嵌入图 (w,ρ)"]
 
 const HELP_TEXT := """虫洞沙盒 | 左键 创建/移动虫洞入口 | 右键/X 删除虫洞 | V 嵌入图 | F 超采样
@@ -78,6 +94,9 @@ var four_axis: FourDAxis
 
 func _ready() -> void:
 	four_axis = UIStyle.apply_hud(self)
+	inv = get_node_or_null("UILayer/InventoryBar") as InventoryBar
+	if inv != null:
+		inv.item_selected.connect(_on_tool_selected)
 	get_viewport().size_changed.connect(_restyle_hud)
 	screen.texture = sub.get_texture()
 	get_viewport().size_changed.connect(_apply_scale)
@@ -102,6 +121,12 @@ func _ready() -> void:
 	if shot_ss > 0.0:
 		ss = shot_ss
 	_apply_scale()
+	if "--portal-demo-triple" in OS.get_cmdline_user_args():
+		_setup_portal_demo_triple()
+	elif "--portal-demo-mobius" in OS.get_cmdline_user_args():
+		_setup_portal_demo_mobius()
+	elif "--portal-demo" in OS.get_cmdline_user_args():
+		_setup_portal_demo()
 	help_label.text = HELP_TEXT
 	toast.text = "点击窗口捕获鼠标 → 左键在视线前方创建虫洞；右键/X 删除，空间回到平直"
 
@@ -144,9 +169,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		if not captured:
 			_set_captured(true)
 		elif event.button_index == MOUSE_BUTTON_LEFT:
-			_create_or_move_wormhole()
+			_use_left()
 		elif event.button_index == MOUSE_BUTTON_RIGHT:
-			_delete_wormhole()
+			_use_right()
 		elif event.button_index == MOUSE_BUTTON_WHEEL_UP and event.shift_pressed:
 			speed = minf(speed * 1.18, 80.0)
 		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN and event.shift_pressed:
@@ -161,7 +186,7 @@ func _unhandled_input(event: InputEvent) -> void:
 			ss = 1.0 if ss >= 1.99 else (1.5 if ss < 1.49 else 2.0)
 			_apply_scale()
 		elif event.keycode == KEY_X:
-			_delete_wormhole()
+			_use_clear()
 
 
 func _set_captured(on: bool) -> void:
@@ -252,6 +277,416 @@ func _delete_wormhole() -> void:
 	created = false
 	b0_target = 0.0
 	_flash("虫洞已删除，空间回到平直")
+
+
+# ============================================================================
+#  传送门物品：经典双门 / 三重门 / 莫比乌斯门
+#  参考 optozorax/portal 的 portal explorer 场景
+# ============================================================================
+
+func _on_tool_selected(idx: int) -> void:
+	if idx == tool:
+		return
+	tool = idx
+	portal_cooldown = 0.4
+	if tool == 2:
+		_clear_portals()
+		_flash("虫洞枪：左键创建/移动，右键删除")
+	elif tool == 0 or tool == 3:
+		if created:
+			_delete_wormhole()
+		_clear_portals(false)
+		portal_slots = [null, null]
+		_flash("%s：左键 / 右键各放一个门" % TOOL_NAMES[tool])
+	elif tool == 1:
+		if created:
+			_delete_wormhole()
+		_clear_portals(false)
+		portal_slots = [null, null, null]
+		_flash("三重门：左键依次放 3 个门，右键清空")
+	else:
+		_clear_portals()
+		_flash("这个槽位预留给后续物品")
+	_push_uniforms()
+
+
+func _use_left() -> void:
+	match tool:
+		0, 3:
+			_place_pair(0)
+		1:
+			_place_triple()
+		2:
+			_create_or_move_wormhole()
+
+
+func _use_right() -> void:
+	match tool:
+		0, 3:
+			_place_pair(1)
+		1:
+			_clear_portals()
+			_flash("三重门已清空")
+		2:
+			_delete_wormhole()
+
+
+func _use_clear() -> void:
+	if tool == 2:
+		_delete_wormhole()
+	else:
+		_clear_portals()
+		_flash("传送门已清空")
+
+
+func _clear_portals(push := true) -> void:
+	portal_slots.clear()
+	triple_next = 0
+	if push:
+		_push_uniforms()
+
+
+func _portals_active() -> bool:
+	if portal_slots.is_empty():
+		return false
+	for p in portal_slots:
+		if p == null:
+			return false
+	return true
+
+
+func _portal_link(i: int) -> int:
+	if tool == 1:
+		return (i + 1) % 3
+	return 1 - i
+
+
+func _place_pair(slot: int) -> void:
+	if portal_slots.size() != 2:
+		portal_slots = [null, null]
+	var rec := _make_portal(slot)
+	if rec.is_empty():
+		return
+	portal_slots[slot] = rec
+	_push_uniforms()
+	var n := 0
+	for p in portal_slots:
+		if p != null:
+			n += 1
+	_flash("%s：%d / 2 已放置" % [TOOL_NAMES[tool], n])
+
+
+func _place_triple() -> void:
+	if portal_slots.size() != 3:
+		portal_slots = [null, null, null]
+	var i := 0
+	while i < 3 and portal_slots[i] != null:
+		i += 1
+	if i >= 3:
+		i = triple_next
+		triple_next = (i + 1) % 3
+	var rec := _make_portal(i)
+	if rec.is_empty():
+		return
+	portal_slots[i] = rec
+	_push_uniforms()
+	var n := 0
+	for p in portal_slots:
+		if p != null:
+			n += 1
+	_flash("三重门：%d / 3 已放置" % n)
+
+
+func _make_portal(slot: int) -> Dictionary:
+	var hit := _raycast_surface()
+	if hit.is_empty():
+		_flash("没有瞄准可放置的表面")
+		return {}
+	var n: Vector3 = hit.normal
+	var upv := Vector3(0, 0, 1)
+	if absf(n.dot(upv)) > 0.92:
+		upv = Vector3(0, 1, 0)
+	upv = (upv - n * upv.dot(n)).normalized()
+	var rightv := upv.cross(n).normalized()
+	var colors: Array = PORTAL_COLORS[tool]
+	var col: Color = colors[slot] if slot < colors.size() else Color.WHITE
+	return {
+		"center": hit.point + n * 0.04,
+		"normal": n,
+		"up": upv,
+		"right": rightv,
+		"radius": PORTAL_R,
+		"roll": PI if tool == 3 else 0.0,
+		"color": col,
+	}
+
+
+## 从相机沿视线找最近的房间墙或盒面（xyz 平直近似）。
+func _raycast_surface() -> Dictionary:
+	var o := Vector3(pos.x, pos.y, pos.z)
+	var d := Vector3(fwd.x, fwd.y, fwd.z)
+	if d.length_squared() < 0.000001:
+		return {}
+	d = d.normalized()
+	var best := 1e20
+	var best_p := Vector3.ZERO
+	var best_n := Vector3.ZERO
+
+	# 房间内壁（法线朝房间内）
+	for axis in 3:
+		for sgn in [-1, 1]:
+			var da := _axis(d, axis)
+			if absf(da) < 0.00001:
+				continue
+			var bound := _axis(ROOM_C, axis) + float(sgn) * ROOM_L
+			var t := (bound - _axis(o, axis)) / da
+			if t <= 0.02 or t >= best:
+				continue
+			var hp := o + d * t
+			var inside := true
+			for a2 in 3:
+				if a2 == axis:
+					continue
+				if absf(_axis(hp, a2) - _axis(ROOM_C, a2)) > ROOM_L - 0.01:
+					inside = false
+			if not inside:
+				continue
+			var n := Vector3.ZERO
+			if axis == 0:
+				n.x = -float(sgn)
+			elif axis == 1:
+				n.y = -float(sgn)
+			else:
+				n.z = -float(sgn)
+			best = t
+			best_p = hp
+			best_n = n
+
+	# 平台 / 柱子（法线朝外）
+	for b in [[OBS1_C, OBS1_H], [OBS2_C, OBS2_H], [OBS3_C, OBS3_H]]:
+		var c: Vector3 = b[0]
+		var h: Vector3 = b[1]
+		var tmin := -1e20
+		var tmax := 1e20
+		var axis_hit := -1
+		var sgn_hit := 0.0
+		for a in 3:
+			var da := _axis(d, a)
+			if absf(da) < 0.00001:
+				if _axis(o, a) < _axis(c, a) - _axis(h, a) or _axis(o, a) > _axis(c, a) + _axis(h, a):
+					tmin = 1e20
+				continue
+			var inv := 1.0 / da
+			var t1 := (_axis(c, a) - _axis(h, a) - _axis(o, a)) * inv
+			var t2 := (_axis(c, a) + _axis(h, a) - _axis(o, a)) * inv
+			var near := minf(t1, t2)
+			var far := maxf(t1, t2)
+			if near > tmin:
+				tmin = near
+				axis_hit = a
+				sgn_hit = -signf(da)
+			tmax = minf(tmax, far)
+		if axis_hit < 0 or tmin > tmax or tmin <= 0.02 or tmin >= best:
+			continue
+		var n := Vector3.ZERO
+		if axis_hit == 0:
+			n.x = sgn_hit
+		elif axis_hit == 1:
+			n.y = sgn_hit
+		else:
+			n.z = sgn_hit
+		best = tmin
+		best_p = o + d * tmin
+		best_n = n
+
+	if best > 1e19:
+		return {}
+	return {"point": best_p, "normal": best_n}
+
+
+func _axis(v: Vector3, i: int) -> float:
+	if i == 0:
+		return v.x
+	if i == 1:
+		return v.y
+	return v.z
+
+
+func _push_portal_uniforms() -> void:
+	var centers := PackedVector4Array()
+	var normals := PackedVector4Array()
+	var rights := PackedVector4Array()
+	var ups := PackedVector4Array()
+	var colors := PackedVector4Array()
+	centers.resize(5)
+	normals.resize(5)
+	rights.resize(5)
+	ups.resize(5)
+	colors.resize(5)
+	for i in 5:
+		centers[i] = Vector4.ZERO
+		normals[i] = Vector4(0, 0, 0, -1)
+		rights[i] = Vector4(1, 0, 0, 0)
+		ups[i] = Vector4(0, 1, 0, 0)
+		colors[i] = Vector4(0, 0, 0, 1)
+
+	var count := 0
+	if _portals_active():
+		count = portal_slots.size()
+		for i in count:
+			var r: Dictionary = portal_slots[i]
+			var c: Vector3 = r.center
+			var n: Vector3 = r.normal
+			var rr: Vector3 = r.right
+			var uu: Vector3 = r.up
+			var col: Color = r.color
+			centers[i] = Vector4(c.x, c.y, c.z, float(r.radius))
+			normals[i] = Vector4(n.x, n.y, n.z, float(_portal_link(i)))
+			rights[i] = Vector4(rr.x, rr.y, rr.z, float(r.roll))
+			ups[i] = Vector4(uu.x, uu.y, uu.z, 0.0)
+			colors[i] = Vector4(col.r, col.g, col.b, 1.0)
+
+	mat.set_shader_parameter("portal_count", count)
+	mat.set_shader_parameter("portal_center", centers)
+	mat.set_shader_parameter("portal_normal", normals)
+	mat.set_shader_parameter("portal_right", rights)
+	mat.set_shader_parameter("portal_up", ups)
+	mat.set_shader_parameter("portal_color", colors)
+
+
+func _check_portal_teleport(prev: Vector4, now: Vector4) -> void:
+	if not _portals_active():
+		return
+	var p0 := Vector3(prev.x, prev.y, prev.z)
+	var p1 := Vector3(now.x, now.y, now.z)
+	var move := p1 - p0
+	if move.length_squared() < 0.000001:
+		return
+	for i in portal_slots.size():
+		var r: Dictionary = portal_slots[i]
+		var c: Vector3 = r.center
+		var n: Vector3 = r.normal
+		var d0 := (p0 - c).dot(n)
+		var d1 := (p1 - c).dot(n)
+		if d0 <= 0.0 or d1 >= d0 or d1 > 0.06:
+			continue
+		var rel := p1 - c
+		var lat := rel - n * rel.dot(n)
+		if lat.length() > float(r.radius) * 0.95:
+			continue
+		if move.normalized().dot(n) >= -0.05:
+			continue
+		_teleport_player(i)
+		return
+
+
+func _teleport_player(i: int) -> void:
+	var entry: Dictionary = portal_slots[i]
+	var exit: Dictionary = portal_slots[_portal_link(i)]
+	var p1 := Vector3(pos.x, pos.y, pos.z)
+	var rel := p1 - Vector3(entry.center)
+	var lx := rel.dot(Vector3(entry.right))
+	var ly := rel.dot(Vector3(entry.up))
+	var lz := rel.dot(Vector3(entry.normal))
+	var roll: float = entry.roll
+	var cr := cos(roll)
+	var sr := sin(roll)
+	var rx := -lx * cr - ly * sr
+	var ry := -lx * sr + ly * cr
+	# 把入口相机所在的位置完整映射到出口，再加法线与着色器一致的 0.10 m。
+	# 这样传送后的相机就是门内画面所用的虚拟相机，视角不会跳。
+	var rz := -lz + 0.10
+	var np: Vector3 = Vector3(exit.center) + Vector3(exit.right) * rx + Vector3(exit.up) * ry + Vector3(exit.normal) * rz
+	pos = surf_project(Vector4(np.x, np.y, np.z, pos.w))
+	var speed_now := vel.length()
+	fwd = _portal_dir(fwd, entry, exit, roll)
+	right = _portal_dir(right, entry, exit, roll)
+	up = _portal_dir(up, entry, exit, roll)
+	n_axis = surf_normal(pos)
+	_make_ortho()
+	vel = _portal_dir(vel, entry, exit, roll)
+	vel -= n_axis * vel.dot(n_axis)
+	if vel.length_squared() > 0.000001:
+		vel = vel.normalized() * speed_now
+	portal_cooldown = 0.8
+	_flash("穿过 %s" % TOOL_NAMES[tool])
+
+
+func _portal_dir(v: Vector4, entry: Dictionary, exit: Dictionary, roll: float) -> Vector4:
+	var er := Vector3(entry.right)
+	var eu := Vector3(entry.up)
+	var en := Vector3(entry.normal)
+	var xr := Vector3(v.x, v.y, v.z)
+	var lx := xr.dot(er)
+	var ly := xr.dot(eu)
+	var lz := xr.dot(en)
+	lx = -lx
+	lz = -lz
+	var cr := cos(roll)
+	var sr := sin(roll)
+	var rx := lx * cr - ly * sr
+	var ry := lx * sr + ly * cr
+	var out := Vector3(exit.right) * rx + Vector3(exit.up) * ry + Vector3(exit.normal) * lz
+	return Vector4(out.x, out.y, out.z, 0.0)
+
+
+func _setup_portal_demo() -> void:
+	tool = 0
+	portal_slots = [
+		{
+			"center": Vector3(20, 14, 2), "normal": Vector3(0, -1, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(1, 0, 0),
+			"radius": PORTAL_R, "roll": 0.0, "color": PORTAL_COLORS[0][0],
+		},
+		{
+			"center": Vector3(34, 0, 2), "normal": Vector3(-1, 0, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(0, -1, 0),
+			"radius": PORTAL_R, "roll": 0.0, "color": PORTAL_COLORS[0][1],
+		},
+	]
+	_push_uniforms()
+	_flash("DEMO：经典双门")
+
+
+func _setup_portal_demo_triple() -> void:
+	tool = 1
+	portal_slots = [
+		{
+			"center": Vector3(20, 14, 2), "normal": Vector3(0, -1, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(1, 0, 0),
+			"radius": PORTAL_R, "roll": 0.0, "color": PORTAL_COLORS[1][0],
+		},
+		{
+			"center": Vector3(34, 0, 2), "normal": Vector3(-1, 0, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(0, -1, 0),
+			"radius": PORTAL_R, "roll": 0.0, "color": PORTAL_COLORS[1][1],
+		},
+		{
+			"center": Vector3(6, 0, 2), "normal": Vector3(1, 0, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(0, 1, 0),
+			"radius": PORTAL_R, "roll": 0.0, "color": PORTAL_COLORS[1][2],
+		},
+	]
+	_push_uniforms()
+	_flash("DEMO：三重门")
+
+
+func _setup_portal_demo_mobius() -> void:
+	tool = 3
+	portal_slots = [
+		{
+			"center": Vector3(20, 14, 2), "normal": Vector3(0, -1, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(1, 0, 0),
+			"radius": PORTAL_R, "roll": PI, "color": PORTAL_COLORS[3][0],
+		},
+		{
+			"center": Vector3(34, 0, 2), "normal": Vector3(-1, 0, 0),
+			"up": Vector3(0, 0, 1), "right": Vector3(0, -1, 0),
+			"radius": PORTAL_R, "roll": PI, "color": PORTAL_COLORS[3][1],
+		},
+	]
+	_push_uniforms()
+	_flash("DEMO：莫比乌斯门")
 
 
 func box_sdf(p: Vector4, c: Vector3, h: Vector3) -> float:
@@ -377,12 +812,20 @@ func _frame_set(i: int, v: Vector4) -> void:
 
 func _process(delta: float) -> void:
 	time_s += delta
+	portal_cooldown = maxf(portal_cooldown - delta, 0.0)
 
 	# ---- 创建/删除: b₀ 平滑长到 3 或回到 0 ----
 	var prev_b0 := b0
 	b0 = lerpf(b0, b0_target, 1.0 - exp(-3.0 * delta))
 	if b0 < FLAT_EPS and prev_b0 >= FLAT_EPS:
 		flat_side = 1.0 if pos.w >= 0.0 else 0.0
+	# 第一次穿喉时 b0 往往还在缓慢长大。只要玩家已经贴近喉口，就直接
+	# 完成这次生长；否则 _snap_player_to_surface 会每帧把玩家按回 w=0
+	# 的喉口球，表现为在喉口卡一小会（之后 b0 稳定就不会再出现）。
+	if b0_target > FLAT_EPS and b0 < b0_target:
+		var rho_now := Vector3(pos.x - entrance_c.x, pos.y - entrance_c.y, pos.z - entrance_c.z).length()
+		if rho_now < b0 + 2.0:
+			b0 = b0_target
 	if absf(b0 - prev_b0) > 0.00001:
 		_snap_player_to_surface()
 		var nn := surf_normal(pos)
@@ -415,21 +858,29 @@ func _process(delta: float) -> void:
 	pos += vel * delta
 
 	# ---- 立方体房间边界 ----
-	var lim := ROOM_L - 0.8
+	# 传送门模式下把碰撞余量压到 4 cm，让玩家能贴到门面再穿过去；
+	# 正常的虫洞模式仍保留 0.8 m 的舒适距离。
+	var portal_mode := tool != 2 and _portals_active()
+	var margin := 0.04 if portal_mode else 0.8
+	var lim := ROOM_L - margin
 	pos.x = clampf(pos.x, ROOM_C.x - lim, ROOM_C.x + lim)
 	pos.y = clampf(pos.y, ROOM_C.y - lim, ROOM_C.y + lim)
 	pos.z = clampf(pos.z, ROOM_C.z - lim, ROOM_C.z + lim)
 
 	# ---- 平台/柱子碰撞 ----
+	var bmargin := 0.04 if portal_mode else 0.35
 	var d1 := box_sdf(pos, OBS1_C, OBS1_H)
-	if d1 < 0.35:
-		pos += box_normal(pos, OBS1_C, OBS1_H) * (0.35 - d1)
+	if d1 < bmargin:
+		pos += box_normal(pos, OBS1_C, OBS1_H) * (bmargin - d1)
 	var d2 := box_sdf(pos, OBS2_C, OBS2_H)
-	if d2 < 0.35:
-		pos += box_normal(pos, OBS2_C, OBS2_H) * (0.35 - d2)
+	if d2 < bmargin:
+		pos += box_normal(pos, OBS2_C, OBS2_H) * (bmargin - d2)
 	var d3 := box_sdf(pos, OBS3_C, OBS3_H)
-	if d3 < 0.35:
-		pos += box_normal(pos, OBS3_C, OBS3_H) * (0.35 - d3)
+	if d3 < bmargin:
+		pos += box_normal(pos, OBS3_C, OBS3_H) * (bmargin - d3)
+
+	if tool != 2 and portal_cooldown <= 0.0 and _portals_active():
+		_check_portal_teleport(prev, pos)
 
 	# ---- 约束在超曲面上; 穿过 w=0 的喉口即进入另一个房间 ----
 	pos = surf_project(pos)
@@ -454,6 +905,7 @@ func _push_uniforms() -> void:
 	mat.set_shader_parameter("flat_side", flat_side)
 	mat.set_shader_parameter("entrance_c", entrance_c)
 	mat.set_shader_parameter("diagram_lift", DIAGRAM_LIFT)
+	_push_portal_uniforms()
 
 
 func _update_hud(delta: float) -> void:
@@ -471,9 +923,9 @@ func _update_hud(delta: float) -> void:
 	var lift_txt := ("   h %.1f" % DIAGRAM_LIFT) if view_mode == 1 else ""
 	if four_axis != null:
 		four_axis.set_frame(pos, fwd, right, up, n_axis)
-	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   入口 C (%+.1f, %+.1f, %+.1f)   b₀ %.2f   K₂ %+.3f   %s   %s   速度 %.1f   SS %.1fx" % [
+	pos_label.text = "[%s]  u %+.2f   w %7.1f   ρ %6.1f%s   入口 C (%+.1f, %+.1f, %+.1f)   b₀ %.2f   K₂ %+.3f   %s   %s   工具 %s   速度 %.1f   SS %.1fx" % [
 		MODE_NAMES[view_mode], u, pos.w, q.length(), lift_txt,
-		entrance_c.x, entrance_c.y, entrance_c.z, b0, k2, state, uni, speed, ss]
+		entrance_c.x, entrance_c.y, entrance_c.z, b0, k2, state, uni, TOOL_NAMES[tool], speed, ss]
 	toast.modulate.a = maxf(toast.modulate.a - delta * 0.5, 0.0)
 
 

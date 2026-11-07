@@ -41,6 +41,14 @@ uniform float flat_side = 1.0;     // 平直时保留的房间颜色: 1 红 / 0 
 uniform vec3 entrance_c = vec3(0.0, 0.0, 0.0);   // 入口中心在房间中的位置
 uniform float diagram_lift = 8.0;  // 嵌入图中虫洞相对方格平面的悬浮高度 (ρ 单位)
 
+// ---- 欧氏传送门（Portal explorer 风格）----
+uniform int portal_count = 0;
+uniform vec4 portal_center[5];   // xyz 中心, w 半径
+uniform vec4 portal_normal[5];   // xyz 法线, w 出口索引
+uniform vec4 portal_right[5];    // xyz 右轴, w 出口滚转
+uniform vec4 portal_up[5];       // xyz 上轴
+uniform vec4 portal_color[5];    // rgb 边框颜色
+
 const int MAX_STEPS = 1200;
 const float W_ESCAPE = 55.0;
 
@@ -369,48 +377,128 @@ vec3 map_surface(vec4 p, vec4 n, vec4 ldir, vec4 v, vec4 p0){
 	return col;
 }
 
+// ============================================================================
+//  欧氏传送门: 射线击中墙面上的圆盘时, 变换到配对的出口门继续步进。
+// ============================================================================
+
+int portal_hit(vec4 p, vec4 n, vec4 v){
+	for (int i = 0; i < 5; i++){
+		if (i >= portal_count) break;
+		vec3 rel = p.xyz - portal_center[i].xyz;
+		float rad = portal_center[i].w;
+		if (dot(rel, rel) > (rad + 0.05) * (rad + 0.05)) continue;
+		if (abs(dot(normalize(n.xyz), portal_normal[i].xyz)) < 0.65) continue;
+		if (dot(normalize(v.xyz), portal_normal[i].xyz) > -0.02) continue;
+		return i;
+	}
+	return -1;
+}
+
+void portal_teleport(inout vec4 p, inout vec4 v, int i){
+	int j = clamp(int(portal_normal[i].w + 0.5), 0, 4);
+	vec3 rel = p.xyz - portal_center[i].xyz;
+	float lx = dot(rel, portal_right[i].xyz);
+	float ly = dot(rel, portal_up[i].xyz);
+	float lz = dot(rel, portal_normal[i].xyz);
+	float vx = dot(v.xyz, portal_right[i].xyz);
+	float vy = dot(v.xyz, portal_up[i].xyz);
+	float vz = dot(v.xyz, portal_normal[i].xyz);
+
+	// 进门 → 出门: 绕出口上轴翻转 180°，再从入口的局部坐标旋到出口标架
+	lx = -lx; lz = -lz;
+	vx = -vx; vz = -vz;
+	float roll = portal_right[i].w;
+	float cr = cos(roll);
+	float sr = sin(roll);
+	float rx = lx * cr - ly * sr;
+	float ry = lx * sr + ly * cr;
+	float wx = vx * cr - vy * sr;
+	float wy = vx * sr + vy * cr;
+
+	vec3 np = portal_center[j].xyz
+		+ portal_right[j].xyz * rx
+		+ portal_up[j].xyz * ry
+		+ portal_normal[j].xyz * lz;
+	np += portal_normal[j].xyz * 0.10;
+	vec3 nv = portal_right[j].xyz * wx
+		+ portal_up[j].xyz * wy
+		+ portal_normal[j].xyz * vz;
+
+	p = surf_project(vec4(np, 0.0));
+	v = vec4(nv, 0.0);
+	vec4 sn = surf_normal(p);
+	v -= sn * dot(v, sn);
+	v = normalize(v);
+}
+
+vec3 portal_rim(vec4 p, vec4 n, vec3 col){
+	for (int i = 0; i < 5; i++){
+		if (i >= portal_count) break;
+		if (abs(dot(normalize(n.xyz), portal_normal[i].xyz)) < 0.65) continue;
+		float d = length(p.xyz - portal_center[i].xyz);
+		float rad = portal_center[i].w;
+		float ring = 1.0 - smoothstep(0.02, 0.10, abs(d - rad));
+		float glow = 1.0 - smoothstep(0.10, 0.24, abs(d - rad));
+		col = mix(col, portal_color[i].rgb, ring);
+		col += portal_color[i].rgb * glow * 0.10;
+	}
+	return col;
+}
+
 vec3 render_scene(vec2 uv){
 	vec2 ndc = vec2(uv.x * 2.0 - 1.0, 1.0 - uv.y * 2.0);
 	ndc.x *= aspect;
 	vec4 v = normalize(cam_fwd + (cam_right * ndc.x + cam_up * ndc.y) * fov_scale);
 	vec4 p = cam_pos;
 
-	float travel = 0.0;
-	bool hit = false;
-	vec4 p0 = p;
+	vec3 col = vec3(0.03, 0.035, 0.04);
 
-	for (int i = 0; i < MAX_STEPS; i++){
-		float wd = map_dist(p);
-		if (wd < 0.02){
-			hit = true;
+	// 最多穿 3 次门；门内看到的画面由出/入口变换后的连续步进给出。
+	for (int bounce = 0; bounce < 3; bounce++){
+		float travel = 0.0;
+		bool hit = false;
+		vec4 p0 = p;
+
+		for (int i = 0; i < MAX_STEPS; i++){
+			float wd = map_dist(p);
+			if (wd < 0.02){
+				hit = true;
+				break;
+			}
+			float h = clamp(0.5 * wd + 0.02, 0.04, 0.6);
+			p0 = p;
+
+			// 约束测地线: 房间墙和中心喉口都在同一张 Ellis 超曲面上。
+			p += v * h;
+			p = surf_project(p);
+			vec4 n = surf_normal(p);
+			v -= n * dot(v, n);
+			v = normalize(v);
+			travel += h;
+
+			if (travel > 200.0){
+				break;
+			}
+		}
+
+		if (!hit){
 			break;
 		}
-		float h = clamp(0.5 * wd + 0.02, 0.04, 0.6);
-		p0 = p;
 
-		// 约束测地线: 房间墙和中心喉口都在同一张 Ellis 超曲面上。
-		p += v * h;
-		p = surf_project(p);
-		vec4 n = surf_normal(p);
-		v -= n * dot(v, n);
-		v = normalize(v);
-		travel += h;
-
-		if (travel > 200.0){
-			break;
+		vec4 n = map_normal(p);
+		int pi = portal_hit(p, n, v);
+		if (pi >= 0 && bounce < 2){
+			portal_teleport(p, v, pi);
+			continue;
 		}
-	}
 
-	vec3 col;
-	if (hit){
 		// 命中点收紧: 步进在 wd<0.02 停下, 掠射面上这点提前量会被放大成
 		// 十几厘米的横向抖动 (格纹扭成同心条带)。用命中前一点的局部射线
 		// 与盒面解析求交, 格纹坐标只由光滑的射线决定。
-		vec4 n = map_normal(p);
 		vec4 ldir = normalize(sun_dir(time_s));
 		col = map_surface(p, n, ldir, v, p0);
-	} else {
-		col = vec3(0.03, 0.035, 0.04);
+		col = portal_rim(p, n, col);
+		break;
 	}
 
 	// NaN/Inf 兜底：个别过渡帧/极掠射角不出现纯黑

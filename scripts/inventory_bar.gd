@@ -15,6 +15,8 @@ const GUN_SLOT := 2
 const STEP := 84.0
 const SHOW_TIME := 1.8
 
+signal item_selected(index: int)
+
 var font: Font
 var ui_scale := 1.0
 var _selected := GUN_SLOT
@@ -68,11 +70,10 @@ func _input(event: InputEvent) -> void:
 
 func _select(idx: int) -> void:
 	_show_timer = SHOW_TIME
-	if idx == _selected:
+	if idx != _selected:
+		_selected = idx
 		queue_redraw()
-		return
-	_selected = idx
-	queue_redraw()
+	item_selected.emit(idx)
 
 
 func _draw() -> void:
@@ -97,11 +98,38 @@ func _draw() -> void:
 			else:
 				draw_rect(rect, Color(0.85, 0.88, 0.88, 0.58), false, maxf(1.0, 2.0 * k))
 
-			if i == GUN_SLOT:
-				_draw_gun(Vector2(x, cy), sz / 72.0)
-			else:
-				draw_circle(Vector2(x, cy), 2.2 * k, Color(0.85, 0.88, 0.88, 0.55))
+			_draw_item_icon(i, Vector2(x, cy), sz, k)
 
+
+
+func _draw_item_icon(i: int, c: Vector2, sz: float, k: float) -> void:
+	var s := sz / 72.0
+	match i:
+		0:
+			# 经典双门：蓝 / 橙两个门圈
+			draw_set_transform(c, 0.0, Vector2(s, s))
+			draw_arc(Vector2(-13, 0), 14, 0, TAU, 32, BLUE, 3.0, true)
+			draw_arc(Vector2(13, 0), 14, 0, TAU, 32, ORANGE, 3.0, true)
+			draw_line(Vector2(-27, 0), Vector2(27, 0), Color(0.80, 0.86, 0.88, 0.35), 1.5)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		1:
+			# 三重门：三个门圈构成循环
+			draw_set_transform(c, 0.0, Vector2(s, s))
+			draw_arc(Vector2(0, -14), 10, 0, TAU, 24, BLUE, 3.0, true)
+			draw_arc(Vector2(-14, 10), 10, 0, TAU, 24, ORANGE, 3.0, true)
+			draw_arc(Vector2(14, 10), 10, 0, TAU, 24, Color(0.55, 0.86, 0.60), 3.0, true)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		2:
+			_draw_gun(c, s)
+		3:
+			# 莫比乌斯门：一条扭在一起的环
+			draw_set_transform(c, 0.0, Vector2(s, s))
+			draw_arc(Vector2(-11, 0), 15, -1.2, 2.6, 28, Color(0.72, 0.55, 1.0), 3.0, true)
+			draw_arc(Vector2(11, 0), 15, 1.9, 5.7, 28, Color(0.55, 0.90, 1.0), 3.0, true)
+			draw_line(Vector2(-4, -10), Vector2(4, 10), Color(0.85, 0.90, 0.92, 0.6), 1.5)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		_:
+			draw_circle(c, 2.2 * k, Color(0.85, 0.88, 0.88, 0.45))
 
 
 func _draw_gun(c: Vector2, s: float) -> void:
