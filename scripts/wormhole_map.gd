@@ -26,8 +26,8 @@ const OBS1_C := Vector3(26.0, 8.0, -11.0)
 const OBS1_H := Vector3(4.0, 4.0, 3.0)
 const OBS2_C := Vector3(14.0, -8.0, -11.0)
 const OBS2_H := Vector3(4.0, 4.0, 3.0)
-const OBS3_C := Vector3(20.0, 0.0, -10.0)
-const OBS3_H := Vector3(1.6, 1.6, 4.0)
+const OBS3_C := Vector3(20.0, 0.0, -6.0)
+const OBS3_H := Vector3(1.6, 1.6, 8.0)
 const ROOM_W := 6.0     # 房间中心 / 喉口所在 |w|
 
 # ---- 传送门物品（参照 optozorax/portal 的经典门 / 三重门 / 莫比乌斯门）----
@@ -267,55 +267,10 @@ func _aim_point() -> Vector3:
 
 
 func _create_or_move_wormhole() -> void:
-	var aim := _aim_point()
-	var safe := _safe_entrance(aim)
-	entrance_c = safe
+	entrance_c = _aim_point()
 	created = true
 	b0_target = B0
-	if safe.distance_to(aim) > 0.05:
-		_flash("入口已避开障碍物")
-	else:
-		_flash("虫洞已创建 / 入口已移动")
-
-
-## 保证喉口球 (半径 b0) 不和平台/柱子/墙体重叠，否则玩家穿喉时会被
-## 实体碰撞推住，出现“在喉口卡一下”。
-func _safe_entrance(p: Vector3) -> Vector3:
-	var clearance := B0 + 0.6
-	for iteration in 4:
-		var moved := false
-		for b in [[OBS1_C, OBS1_H], [OBS2_C, OBS2_H], [OBS3_C, OBS3_H]]:
-			var c: Vector3 = b[0]
-			var h: Vector3 = b[1]
-			var q := Vector3(
-				clampf(p.x, c.x - h.x, c.x + h.x),
-				clampf(p.y, c.y - h.y, c.y + h.y),
-				clampf(p.z, c.z - h.z, c.z + h.z))
-			var d := p - q
-			if d.length() >= clearance:
-				continue
-			if d.length_squared() < 0.000001:
-				# 入口落在障碍物内部：沿最近的面推出去
-				var px := h.x - absf(p.x - c.x)
-				var py := h.y - absf(p.y - c.y)
-				var pz := h.z - absf(p.z - c.z)
-				if px <= py and px <= pz:
-					p.x = c.x + signf(p.x - c.x) * (h.x + clearance)
-				elif py <= pz:
-					p.y = c.y + signf(p.y - c.y) * (h.y + clearance)
-				else:
-					p.z = c.z + signf(p.z - c.z) * (h.z + clearance)
-			else:
-				p = q + d.normalized() * clearance
-			moved = true
-		# 也留出到房间墙体的喉口半径
-		var wc := 3.2
-		p.x = clampf(p.x, ROOM_C.x - (ROOM_L - wc), ROOM_C.x + (ROOM_L - wc))
-		p.y = clampf(p.y, ROOM_C.y - (ROOM_L - wc), ROOM_C.y + (ROOM_L - wc))
-		p.z = clampf(p.z, ROOM_C.z - (ROOM_L - wc), ROOM_C.z + (ROOM_L - wc))
-		if not moved:
-			break
-	return p
+	_flash("虫洞已创建 / 入口已移动")
 
 
 func _delete_wormhole() -> void:
@@ -604,24 +559,25 @@ func _push_portal_uniforms() -> void:
 func _check_portal_teleport(prev: Vector4, now: Vector4) -> void:
 	if not _portals_active():
 		return
-	var p0 := Vector3(prev.x, prev.y, prev.z)
 	var p1 := Vector3(now.x, now.y, now.z)
-	var move := p1 - p0
-	if move.length_squared() < 0.000001:
+	var vel3 := Vector3(vel.x, vel.y, vel.z)
+	if vel3.length_squared() < 0.000001:
 		return
+	vel3 = vel3.normalized()
 	for i in portal_slots.size():
 		var r: Dictionary = portal_slots[i]
 		var c: Vector3 = r.center
 		var n: Vector3 = r.normal
-		var d0 := (p0 - c).dot(n)
 		var d1 := (p1 - c).dot(n)
-		if d0 <= 0.0 or d1 >= d0 or d1 > 0.06:
+		# 允许玩家被碰撞夹在门面 4 cm 处时继续按住前进也能穿过去；
+		# 不再要求“距离这一帧必须变小”。
+		if d1 <= 0.0 or d1 > 0.08:
 			continue
 		var rel := p1 - c
 		var lat := rel - n * rel.dot(n)
 		if lat.length() > float(r.radius) * 0.95:
 			continue
-		if move.normalized().dot(n) >= -0.05:
+		if vel3.dot(n) >= -0.05:
 			continue
 		_teleport_player(i)
 		return
@@ -655,7 +611,7 @@ func _teleport_player(i: int) -> void:
 	vel -= n_axis * vel.dot(n_axis)
 	if vel.length_squared() > 0.000001:
 		vel = vel.normalized() * speed_now
-	portal_cooldown = 0.8
+	portal_cooldown = 0.2
 	_flash("穿过 %s" % TOOL_NAMES[tool])
 
 

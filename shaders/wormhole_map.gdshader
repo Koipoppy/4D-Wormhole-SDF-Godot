@@ -281,8 +281,8 @@ const vec3 OBS1_C = vec3(26.0, 8.0, -11.0);
 const vec3 OBS1_H = vec3(4.0, 4.0, 3.0);
 const vec3 OBS2_C = vec3(14.0, -8.0, -11.0);
 const vec3 OBS2_H = vec3(4.0, 4.0, 3.0);
-const vec3 OBS3_C = vec3(20.0, 0.0, -10.0);
-const vec3 OBS3_H = vec3(1.6, 1.6, 4.0);
+const vec3 OBS3_C = vec3(20.0, 0.0, -6.0);
+const vec3 OBS3_H = vec3(1.6, 1.6, 8.0);
 
 float box_dist(vec4 p, vec3 c, vec3 h){
 	// 真欧氏盒 SDF: 用 max-norm 时射线会在盒角附近穿进盒内,
